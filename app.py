@@ -142,19 +142,19 @@ if search_btn:
             progress_bar.progress((i) / len(scrapers))
             status_text.text(t('crawling').format(source_name))
             
-                try:
-                    results = scraper.search(make, model, year)
-                    all_results.extend(results)
-                    
-                    # Show status in debug log/toast
-                    # st.toast(f"{source_name}: {len(results)} results")
-                except Exception as e:
-                    print(f"{source_name} Error: {e}")
-                    # Log error to file
-                    with open("scraper_debug.log", "a", encoding="utf-8") as f:
-                        f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {source_name} CRASH: {e}\n")
+            try:
+                results = scraper.search(make, model, year)
+                all_results.extend(results)
                 
-                time.sleep(0.5)
+                # Show status in debug log/toast
+                # st.toast(f"{source_name}: {len(results)} results")
+            except Exception as e:
+                print(f"{source_name} Error: {e}")
+                # Log error to file
+                with open("scraper_debug.log", "a", encoding="utf-8") as f:
+                    f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {source_name} CRASH: {e}\n")
+            
+            time.sleep(0.5)
         
         progress_bar.progress(100)
         status_text.empty()
