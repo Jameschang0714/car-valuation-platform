@@ -61,7 +61,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title(t('app_title'))
+st.title('🇵🇭 Philippines Used Car Price Searcher (v3.2 - Stable)')
 st.write(t('app_subtitle'))
 
 # Sidebar for inputs
@@ -168,7 +168,11 @@ if search_btn:
         
         # --- Helper for Display ---
         # 1. Format Price
-        df['Price (PHP)'] = df['price_display']
+        # 1. Format Price
+        if 'price_display' in df.columns:
+            df['Price (PHP)'] = df['price_display']
+        else:
+            df['Price (PHP)'] = df['price'].apply(lambda x: f"₱{x:,.0f}")
         
         # 2. Format Date & Highlight Logic
         current_time = datetime.now()

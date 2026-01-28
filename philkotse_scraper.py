@@ -161,6 +161,7 @@ class PhilkotseScraper:
                                         search_items.append({
                                             'title': title,
                                             'price': price,
+                                            'price_display': price_text.strip(),
                                             'link': link,
                                             'source': 'Philkotse',
                                             'image': image_url,

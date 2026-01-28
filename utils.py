@@ -21,7 +21,7 @@ def format_currency(amount):
 TRANSLATIONS = {
     'en': {
         'app_title': '🇵🇭 Philippines Used Car Price Searcher',
-        'app_subtitle': 'Mabuhay! Input car details to search across major Philippine platforms. (v3.1 - Truck Edition)',
+        'app_subtitle': 'Mabuhay! Input car details to search across major Philippine platforms. (v3.2 - Stable)',
         'search_params': 'Search Parameters',
         'make': 'Make (Brand)',
         'model': 'Model',
