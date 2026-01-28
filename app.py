@@ -62,7 +62,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title(t('app_title'))
-st.write(f"{t('app_subtitle')} (v3.0 - Truck Edition)")
+st.write(t('app_subtitle'))
 
 # Sidebar for inputs
 with st.sidebar:
@@ -142,12 +142,19 @@ if search_btn:
             progress_bar.progress((i) / len(scrapers))
             status_text.text(t('crawling').format(source_name))
             
-            try:
-                results = scraper.search(make, model, year)
-                all_results.extend(results)
-                time.sleep(0.5) 
-            except Exception as e:
-                print(f"{source_name} Error: {e}")
+                try:
+                    results = scraper.search(make, model, year)
+                    all_results.extend(results)
+                    
+                    # Show status in debug log/toast
+                    # st.toast(f"{source_name}: {len(results)} results")
+                except Exception as e:
+                    print(f"{source_name} Error: {e}")
+                    # Log error to file
+                    with open("scraper_debug.log", "a", encoding="utf-8") as f:
+                        f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {source_name} CRASH: {e}\n")
+                
+                time.sleep(0.5)
         
         progress_bar.progress(100)
         status_text.empty()
@@ -228,10 +235,14 @@ if search_btn:
             try:
                 with open("scraper_debug.log", "r", encoding="utf-8") as f:
                     log_content = f.readlines()
-                    # 只顯示最後 30 行
-                    st.code("".join(log_content[-30:]))
+                    # Show last 50 lines
+                    st.code("".join(log_content[-50:]))
             except:
                 st.write(t('no_logs'))
+        
+        # Add a manual refresh for logs
+        if st.toggle("Show Raw Search Results (Debug)"):
+             st.json(all_results)
 
 # Footer
 st.markdown("---")

@@ -27,15 +27,12 @@ class CarousellScraper:
                 f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Carousell (CFFI): 嘗試抓取 {url}\n")
             
             # Use curl_cffi to bypass TLS fingerprinting
-            # Try a slightly older/different browser version if 120 is flagged, or just rely on default behavior
-            # Removing explicit headers to avoid fingerprint mismatch
+            # Try chrome124 which is newer, sometimes older ones gets flagged
+            # Removing explicit headers completely to avoid fingerprint mismatch
             response = cffi_requests.get(
                 url, 
-                impersonate="chrome110", # Changed to chrome110 to rotate fingerprint
-                timeout=30,
-                headers={
-                    "Referer": "https://www.google.com/"
-                }
+                impersonate="chrome124", 
+                timeout=30
             )
             
             with open("scraper_debug.log", "a", encoding="utf-8") as f:
