@@ -19,30 +19,24 @@ class CarousellScraper:
         url = f"{self.base_url}/search/{encoded_query}/?category_id=32&sort_by=3"
         
         # Realistic Modern Browser Headers
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-            "Sec-Ch-Ua-Mobile": "?0",
-            "Sec-Ch-Ua-Platform": '"Windows"',
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
-            "Sec-Fetch-User": "?1",
-            "Upgrade-Insecure-Requests": "1",
-            "Cache-Control": "max-age=0",
-            "Referer": "https://www.google.com/"
-        }
+        # Note: curl_cffi impersonate handles most headers. Overriding them manually can break the fingerprint.
+        # We only set Referer (sometimes helpful) but let impersonate manage User-Agent and others.
         
         try:
             with open("scraper_debug.log", "a", encoding="utf-8") as f:
                 f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Carousell (CFFI): 嘗試抓取 {url}\n")
             
             # Use curl_cffi to bypass TLS fingerprinting
-            # timeout matches standard requests usage
-            response = cffi_requests.get(url, impersonate="chrome120", timeout=30)
+            # Try a slightly older/different browser version if 120 is flagged, or just rely on default behavior
+            # Removing explicit headers to avoid fingerprint mismatch
+            response = cffi_requests.get(
+                url, 
+                impersonate="chrome110", # Changed to chrome110 to rotate fingerprint
+                timeout=30,
+                headers={
+                    "Referer": "https://www.google.com/"
+                }
+            )
             
             with open("scraper_debug.log", "a", encoding="utf-8") as f:
                 f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Carousell: 回傳狀態碼 {response.status_code}, 內容長度 {len(response.text)}\n")
