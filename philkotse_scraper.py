@@ -67,10 +67,15 @@ class PhilkotseScraper:
              
              q_str = urllib.parse.quote(" ".join(query_parts))
              unique_paths.append(f"/cars-for-sale?q={q_str}")
+             # Backup: Try simpler query if complex one fails (e.g. just "Shacman")
+             if len(query_parts) > 1:
+                 unique_paths.append(f"/cars-for-sale?q={urllib.parse.quote(make)}")
         else:
              # Original logic for strict Make-Model path
              for p in paths:
                 if p not in unique_paths: unique_paths.append(p)
+             # Fallback for strict mode too: Add general search
+             unique_paths.append(f"/cars-for-sale?q={urllib.parse.quote(make)}")
 
         for path in unique_paths:
             url = self.base_url + path if not path.startswith("http") else path
@@ -109,20 +114,40 @@ class PhilkotseScraper:
                             # So we relax: if we used generic search, we assume results are relevant enough or require make match
                             
                             is_relevant = False
-                            if make.lower() in title.lower():
+                            # Broaden relevance check:
+                            # 1. Exact make match in title
+                            # 2. OR query words appear in title (for cases where Make isn't first word)
+                            
+                            title_lower = title.lower()
+                            if make.lower() in title_lower:
                                  is_relevant = True
+                            
+                            # If we are in generic search mode (e.g. "Shacman"), and title contains "Shacman", good.
+                            # What if title is "Howo Dump Truck" and make was "Howo"? -> Matches.
+                            
+                            # Additional relaxation: If we couldn't find matches by Make, but query keywords are there?
+                            # e.g. User searches "Wing Van" (Make=Wing Van, Model=""). 
+                            # If we handle "Make" as a keyword container when model is empty.
+                            
+                            if not is_relevant and use_generic_search:
+                                 # strict check on valid keywords
+                                 q_keywords = [k.lower() for k in query_parts if len(k) > 2] # ignore short words
+                                 if q_keywords and all(k in title_lower for k in q_keywords):
+                                      is_relevant = True
+
+                            if is_relevant:
                                  # If model is provided and not a generic keyword (simple check: single word?), 
                                  # we could enforce it, but for now let's trust the search engine results if Make matches.
                                  if model:
-                                      # Check if all keywords in model are in title
                                       model_keywords = model.lower().split()
-                                      if all(k in title.lower() for k in model_keywords):
-                                           is_relevant = True
-                                      else:
-                                           # If strict model check fails, but we are in loose mode?
-                                           # For safety, let's say if user typed "Vios", it MUST say Vios.
-                                           # If user typed "Wing Van", it MUST say Wing Van.
-                                           is_relevant = True if all(k in title.lower() for k in model_keywords) else False
+                                      # For trucks, "Wing Van" might be "Wingvan" or "Wing-Van", be loose
+                                      # Just checking if ANY relevant part is there if strictly enforcing?
+                                      # Let's keep it relatively strict for model if provided, but allow fuzzy matches?
+                                      # Actually, "Shacman Wing Van" search -> Title "Shacman X3000". Model mismatch?
+                                      # If user explicitly said "Wing Van", generally we want Wing Vans.
+                                      # But scraper might find "Shacman Tractor Head". 
+                                      # Let's trust the search engine rank for now.
+                                      pass 
 
                             if is_relevant:
                                 # Match ANY of the target years IF target_year is set

@@ -62,7 +62,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title(t('app_title'))
-st.write(t('app_subtitle'))
+st.write(f"{t('app_subtitle')} (v3.0 - Truck Edition)")
 
 # Sidebar for inputs
 with st.sidebar:
