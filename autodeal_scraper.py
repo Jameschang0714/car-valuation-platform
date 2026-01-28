@@ -16,14 +16,28 @@ class AutoDealScraper:
         
         # Normalize for URL slugs - AutoDeal often prefers Title-Case for makes
         make_slug = make.strip().replace(" ", "-").lower()
-        model_slug = model.strip().replace(" ", "-").lower()
+        model_slug = model.strip().replace(" ", "-").lower() if model else ""
         
-        # Strategy: Use the specific search filter URL pattern
-        # /used-cars/search/used-car-status/toyota-make/vios-model/page-1?sort-by=relevance
-        urls_to_try = [
-            f"{self.base_url}/used-cars/search/used-car-status/{make_slug}-make/{model_slug}-model/page-1?sort-by=relevance",
-            f"{self.base_url}/used-cars/search/{urllib.parse.quote(f'{make} {model} {year}')}"
-        ]
+        # Strategy Update for Shacman/Generic Terms:
+        # If model is empty or has spaces (e.g. "Wing Van"), prioritize search query over strict path
+        urls_to_try = []
+        
+        is_generic_search = not model or " " in model
+        
+        if is_generic_search:
+             # Generic search: ?k={make}+{model} or similar
+             # AutoDeal uses /used-cars/search?display-type=grid&keyword=
+             # Or /used-cars/search/{encoded}
+             q_str = f"{make} {model}" if model else make
+             if year and str(year).isdigit(): q_str += f" {year}"
+             urls_to_try.append(f"{self.base_url}/used-cars/search/{urllib.parse.quote(q_str)}?sort-by=relevance")
+        else:
+             # Strict path logic for known models
+             urls_to_try.append(f"{self.base_url}/used-cars/search/used-car-status/{make_slug}-make/{model_slug}-model/page-1?sort-by=relevance")
+             # Fallback
+             q_str = f"{make} {model}" 
+             if year: q_str += f" {year}"
+             urls_to_try.append(f"{self.base_url}/used-cars/search/{urllib.parse.quote(q_str)}")
         
         for url in urls_to_try:
             headers = {
@@ -92,17 +106,32 @@ class AutoDealScraper:
                             # Logic check - handle fuzzy search or specific year
                             match = False
                             title_lower = title.lower()
-                            if model.lower() in title_lower:
-                                if fuzzy_search:
-                                    match = True
-                                else:
-                                    # Look for specific year or roughly adjacent years
-                                    year_str = str(year)
-                                    prev_year = str(int(year) - 1)
-                                    next_year = str(int(year) + 1)
-                                    if year_str in title or prev_year in title or next_year in title:
-                                        match = True
-                                
+                            
+                            # Validation update:
+                            # If generic search, we trust the make match more.
+                            if make.lower() in title_lower:
+                                 # If strictly searching for a model (e.g. Vios), check it
+                                 # If generic (Wing Van), check if keywords present
+                                 model_match = True
+                                 if model:
+                                      model_keywords = model.lower().split()
+                                      if not all(k in title_lower for k in model_keywords):
+                                           model_match = False
+                                 
+                                 if model_match:
+                                      if fuzzy_search:
+                                           match = True
+                                      else:
+                                           # If specific year requested
+                                           if year and str(year).isdigit():
+                                                year_str = str(year)
+                                                prev_year = str(int(year) - 1)
+                                                next_year = str(int(year) + 1)
+                                                if year_str in title or prev_year in title or next_year in title:
+                                                     match = True
+                                           else:
+                                                match = True # No year requirement
+                                 
                             if match:
                                 price = self._parse_price(price_text)
                                 if price > 30000:

@@ -72,11 +72,12 @@ with st.sidebar:
     st.session_state.language = lang_options[selected_lang]
 
     st.divider()
-
+    
     st.header(t('search_params'))
     make = st.text_input(t('make'), value="Toyota")
-    model = st.text_input(t('model'), value="Vios")
-    year = st.text_input(t('year'), value="2023")
+    # Allow empty model/year for broader search
+    model = st.text_input(t('model'), value="", placeholder="Optional (e.g. Vios, Wing Van)")
+    year = st.text_input(t('year'), value="", placeholder="Optional (e.g. 2023)")
     
     st.divider()
     
