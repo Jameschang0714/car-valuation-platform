@@ -23,15 +23,20 @@ class CarousellScraper:
         # We only set Referer (sometimes helpful) but let impersonate manage User-Agent and others.
         
         try:
+            # Randomize browser fingerprint to evade WAF
+            browser_types = ["chrome110", "edge101", "safari15_5"]
+            impersonate_browser = random.choice(browser_types)
+            
+            # Add random delay
+            time.sleep(random.uniform(1, 3))
+
             with open("scraper_debug.log", "a", encoding="utf-8") as f:
-                f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Carousell (CFFI): 嘗試抓取 {url}\n")
+                f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Carousell (CFFI): 嘗試抓取 {url} (Browser: {impersonate_browser})\n")
             
             # Use curl_cffi to bypass TLS fingerprinting
-            # Try chrome124 which is newer, sometimes older ones gets flagged
-            # Removing explicit headers completely to avoid fingerprint mismatch
             response = cffi_requests.get(
                 url, 
-                impersonate="chrome124", 
+                impersonate=impersonate_browser, 
                 timeout=30,
                 verify=False
             )

@@ -46,15 +46,35 @@ class AutoDealScraper:
                 with open("scraper_debug.log", "a", encoding="utf-8") as f:
                      f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] AutoDeal: 嘗試抓取 {url}\n")
                 
-                # Use curl_cffi
-                response = cffi_requests.get(
-                    url, 
-                    impersonate="chrome120", 
-                    timeout=30
-                )
+                # Implement Retry Logic for 202 (Processing/Cloudflare)
+                max_retries = 3
+                browser_types = ["chrome110", "edge101", "safari15_5"]
                 
-                with open("scraper_debug.log", "a", encoding="utf-8") as f:
-                     f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] AutoDeal: 回傳狀態碼 {response.status_code}, 內容長度 {len(response.text)}\n")
+                for attempt in range(max_retries):
+                    # Randomize browser
+                    impersonate_browser = random.choice(browser_types)
+                    
+                    # Random delay before request
+                    time.sleep(random.uniform(1, 3))
+
+                    # Use curl_cffi
+                    response = cffi_requests.get(
+                        url, 
+                        impersonate=impersonate_browser, 
+                        timeout=30
+                    )
+                    
+                    with open("scraper_debug.log", "a", encoding="utf-8") as f:
+                        f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] AutoDeal (Attempt {attempt+1}): 回傳狀態碼 {response.status_code} (Browser: {impersonate_browser})\n")
+
+                    if response.status_code == 200:
+                        break
+                    elif response.status_code == 202:
+                        # 202 Accepted = Challenge running, wait and retry
+                        time.sleep(2)
+                        continue
+                    else:
+                        break # Other errors, probably real errors or 404
 
                 if response.status_code != 200:
                     continue
