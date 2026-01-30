@@ -1,43 +1,63 @@
-
-import importlib
+import sys
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except AttributeError:
+    pass
 import time
-from philkotse_scraper import PhilkotseScraper
-from autodeal_scraper import AutoDealScraper
-from automart_scraper import AutomartScraper
 from carousell_scraper import CarousellScraper
 
-def test_search(make, model, year, description):
-    print(f"\n--- Testing: {description} ({make} {model} {year}) ---")
+def debug_carousell():
+    print("--- Debugging Carousell 'Shacman' Search ---")
+    scraper = CarousellScraper()
     
-    scrapers = [
-        PhilkotseScraper(),
-        AutoDealScraper(),
-        # AutomartScraper(), # Automart API calls might result in 403 locally sometimes, keeping it for now
-        CarousellScraper()
-    ]
+    # Simulate the user's query: Make="Shacman", Model="", Year=""
+    make = "Shacman"
+    model = ""
+    year = ""
     
-    for scraper in scrapers:
-        name = scraper.__class__.__name__
-        try:
-            start = time.time()
-            # Passing empty strings/None if not provided
-            results = scraper.search(make, model or "", year or "")
-            duration = time.time() - start
-            print(f"[{name}] Found {len(results)} items in {duration:.2f}s")
-            if len(results) > 0:
-                print(f"   Example: {results[0]['title']} - {results[0]['link']}")
-        except Exception as e:
-            print(f"[{name}] CRASHED: {e}")
+    print(f"Query: Make='{make}', Model='{model}', Year='{year}'")
+    
+    try:
+        # Patching search to print the URL it generates? 
+        # Easier to just run it and see the debug log or modify the scraper slightly to print.
+        # But I can't easily modify the running class without editing the file.
+        # I'll rely on the return value first.
+        
+        results = scraper.search(make, model, year)
+        print(f"Results Found: {len(results)}")
+        
+        if len(results) == 0:
+            print("No results found. Possible reasons:")
+            print("1. URL structure incorrect for empty model/year?")
+            print("2. Selectors outdated?")
+            print("3. Response blocked (403)?")
+            
+            # Let's try to verify the URL manually here to replicate exactly what the scraper does
+            import urllib.parse
+            query = f"{make} {model} {year}".strip()
+            encoded_query = urllib.parse.quote(query)
+            url = f"https://www.carousell.ph/search/{encoded_query}/?category_id=32&sort_by=3"
+            print(f"Generated URL: {url}")
+            
+            # Let's check scraper_debug.log content if possible, but reading file inside script is also fine.
+            try:
+                with open("scraper_debug.log", "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                    print("\n--- Last 5 lines of scraper_debug.log ---")
+                    for line in lines[-5:]:
+                        print(line.strip())
+            except FileNotFoundError:
+                print("scraper_debug.log not found.")
+
+        else:
+            print("Results found:")
+            for item in results[:3]:
+                print(item)
+
+    except Exception as e:
+        print(f"Exception during search: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
-    # 1. Test Shacman (Brand Only)
-    test_search("Shacman", "", "", "Brand Only: Shacman")
-    
-    # 2. Test Wing Van (Keyword as Model)
-    test_search("Shacman", "Wing Van", "", "Keyword: Shacman Wing Van")
-    
-    # 3. Test Dump Truck (Keyword as Model)
-    test_search("Isuzu", "Dump Truck", "", "Keyword: Isuzu Dump Truck")
-    
-    # 4. Test Tractor Head (Keyword as Model)
-    test_search("Sinotruk", "Tractor Head", "", "Keyword: Sinotruk Tractor Head")
+    debug_carousell()

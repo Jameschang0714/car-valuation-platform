@@ -40,6 +40,10 @@ class CarousellScraper:
             
             if response.status_code != 200:
                 return []
+            
+            # Save HTML for debugging
+            with open("carousell_debug.html", "w", encoding="utf-8") as f:
+                f.write(response.text)
 
             soup = BeautifulSoup(response.text, 'html.parser')
             results = []
@@ -54,43 +58,78 @@ class CarousellScraper:
                 except: pass
 
             # Fallback CSS Selectors (Current Carousell Web)
-            items = soup.select('div[data-testid^="listing-card"], div.M-') # Carousell matches many M- classes
-            if not items:
-                # Last ditch: all links that look like products
-                items = soup.select('a[href^="/p/"]')
+            items = soup.select('div[data-testid^="listing-card"]')
 
             for item in items:
                 try:
-                    # Generic search for prices and titles within the block
-                    title = item.find(string=re.compile(f"{make}|{model}", re.I))
-                    price_elem = item.find(string=re.compile(r'₱|\d{3,},?\d{3}'))
-                    # Link extraction priority: /p/ link -> any link
-                    link_elem = item.find('a', href=re.compile(r'/p/')) or \
-                                (item if item.name == 'a' else item.find('a', href=True))
+                    # 1. Extract Link (Product link starts with /p/)
+                    link_elem = item.find('a', href=re.compile(r'^/p/'))
+                    if not link_elem: continue
+                    
+                    raw_link = link_elem['href']
+                    link = self.base_url + raw_link if not raw_link.startswith('http') else raw_link
 
-                    if title and price_elem and link_elem:
-                        price_text = price_elem.strip()
-                        price = self._parse_price(price_text)
+                    # 2. Extract Price (Look for p tag with title="PHP ...")
+                    price_elem = item.find('p', title=re.compile(r'PHP', re.I))
+                    if not price_elem:
+                        # Fallback: look for text matching price pattern
+                        price_elem = item.find(string=re.compile(r'PHP\s|₱', re.I))
+                    
+                    price = 0
+                    price_text = "0"
+                    if price_elem:
+                        # Extract text safely
+                        txt = None
+                        # Check if it has 'get' (Tag) and title attr
+                        if hasattr(price_elem, 'get'):
+                            txt = price_elem.get('title')
                         
-                        raw_link = link_elem['href']
-                        # Ensure we don't capture seller profile links (/u/)
-                        if '/u/' in raw_link and not '/p/' in raw_link:
-                            # Try finding another link in the same item that has /p/
-                            alt_link = item.find('a', href=re.compile(r'/p/'))
-                            if alt_link: raw_link = alt_link['href']
+                        # If no title, get text content
+                        if not txt and hasattr(price_elem, 'get_text'):
+                             txt = price_elem.get_text(strip=True)
                         
-                        link = self.base_url + raw_link if not raw_link.startswith('http') else raw_link
+                        # Fallback for NavigableString
+                        if not txt:
+                             txt = str(price_elem)
+                        
+                        price = self._parse_price(txt)
+                        price_text = txt
 
-                        if price > 20000:
-                            results.append({
-                                'title': title.strip(),
-                                'price': price,
-                                'price_display': price_text,
-                                'link': link,
-                                'source': 'Carousell',
-                                'date': 'N/A'
-                            })
-                except: continue
+                    # 3. Extract Title
+                    # Strategy: Find p tag with style="--max-line:2" OR exclude seller/price
+                    title_elem = item.find('p', style=re.compile(r'--max-line:2'))
+                    
+                    if not title_elem:
+                         # Fallback: Find all p tags, exclude known others
+                         ps = item.find_all('p')
+                         candidates = []
+                         for p in ps:
+                             # Exclude seller
+                             if p.get('data-testid') == 'listing-card-text-seller-name': continue
+                             # Exclude price (if it has title=PHP)
+                             if p.get('title') and 'PHP' in p.get('title'): continue
+                             # Exclude short labels (Time, Condition)
+                             text = p.get_text(strip=True)
+                             if len(text) < 4: continue 
+                             candidates.append(p)
+                         
+                         if candidates:
+                             # Pick the longest text as likely title
+                             title_elem = max(candidates, key=lambda x: len(x.get_text()))
+
+                    if title_elem and price > 20000:
+                        title = title_elem.get_text(strip=True)
+                        results.append({
+                            'title': title,
+                            'price': price,
+                            'price_display': price_text,
+                            'link': link,
+                            'source': 'Carousell',
+                            'date': 'N/A'
+                        })
+                except Exception as e:
+                     # print(f"Item parse error: {e}")
+                     continue
             
             return results
         except:
