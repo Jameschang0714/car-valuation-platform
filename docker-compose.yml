@@ -2,7 +2,7 @@ services:
   app:
     build: .
     ports:
-      - "8501:8501"
+      - "80:8501"
     restart: always
     volumes:
       - .:/app

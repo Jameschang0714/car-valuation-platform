@@ -20,3 +20,12 @@ autodeal_debug_live.html
 # OS specific
 .DS_Store
 Thumbs.db
+
+# Debug Files
+debug_*.png
+debug_*.html
+test_*.py
+inspect_*.py
+reproduce_*.py
+verify_*.py
+vps_diagnose.py

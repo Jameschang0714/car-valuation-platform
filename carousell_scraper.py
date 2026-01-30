@@ -147,6 +147,17 @@ class CarousellScraper:
                              # Pick the longest text as likely title
                              title_elem = max(candidates, key=lambda x: len(x.get_text()))
 
+                    # 4. Extract Date (Regex fallback)
+                    date_str = "N/A"
+                    # Try to find a date pattern in any <p> tag
+                    all_ps = item.find_all('p')
+                    for p in all_ps:
+                        text = p.get_text(strip=True)
+                        # Regex for "8 days ago", "yesterday", "2 hours ago", "just now", "30+ days ago"
+                        if re.search(r'(\d+\+?\s+(minute|hour|day|week|month|year)s?\s+ago|yesterday|today|just now)', text, re.IGNORECASE):
+                            date_str = text
+                            break
+
                     if title_elem and price > 20000:
                         title = title_elem.get_text(strip=True)
                         results.append({
@@ -155,8 +166,24 @@ class CarousellScraper:
                             'price_display': price_text,
                             'link': link,
                             'source': 'Carousell',
-                            'date': 'N/A'
+                            'date': date_str
                         })
+                        
+                        # Apply Fuzzy/Strict Year Filter
+                        if year and str(year).isdigit():
+                            target_year = str(year)
+                            is_match = False
+                            if target_year in title:
+                                is_match = True
+                            elif fuzzy_search:
+                                # If fuzzy, check adjacent years
+                                prev = str(int(year)-1)
+                                next_y = str(int(year)+1)
+                                if prev in title or next_y in title:
+                                    is_match = True
+                            
+                            if not is_match:
+                                results.pop() # Remove the last added item
                 except Exception as e:
                      # print(f"Item parse error: {e}")
                      continue

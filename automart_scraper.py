@@ -64,6 +64,21 @@ class AutomartScraper:
                                     'source': 'Automart',
                                     'date': date_str
                                 })
+
+                                # Automart Year Filtering
+                                if year and str(year).isdigit():
+                                    target_year = str(year)
+                                    # Automart title is usually "Year Make Model"
+                                    # We check if title contains the year
+                                    is_match = False
+                                    if target_year in title:
+                                        is_match = True
+                                    elif fuzzy_search:
+                                        if str(int(year)-1) in title or str(int(year)+1) in title:
+                                            is_match = True
+                                    
+                                    if not is_match:
+                                        results.pop()
                     except Exception as e:
                         print(f"Automart item parse error: {e}")
                         continue

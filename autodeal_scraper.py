@@ -20,14 +20,14 @@ class AutoDealScraper:
         use_generic_search = False
 
         if not model or " " in model:
-             use_generic_search = True
+            use_generic_search = True
 
         if use_generic_search:
-             # Generic search: fallback to q=
-             query = f"{make} {model}"
-             encoded_query = urllib.parse.quote(query.strip())
-             unique_urls.append(f"{self.base_url}/used-cars/search/{encoded_query}?sort-by=relevance")
-             unique_urls.append(f"{self.base_url}/used-cars/search/{make_slug}%20{model_slug}")
+            # Generic search: fallback to q=
+            query = f"{make} {model}"
+            encoded_query = urllib.parse.quote(query.strip())
+            unique_urls.append(f"{self.base_url}/used-cars/search/{encoded_query}?sort-by=relevance")
+            unique_urls.append(f"{self.base_url}/used-cars/search/{make_slug}%20{model_slug}")
         else:
             # Strict mode
             if year and str(year).isdigit():
@@ -44,7 +44,7 @@ class AutoDealScraper:
             try:
                 # Log usage
                 with open("scraper_debug.log", "a", encoding="utf-8") as f:
-                     f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] AutoDeal: 嘗試抓取 {url}\n")
+                    f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] AutoDeal: 嘗試抓取 {url}\n")
                 
                 # Implement Robust Session Logic (v3.3.6)
                 max_retries = 3
@@ -101,8 +101,7 @@ class AutoDealScraper:
                         break
                     elif response.status_code == 202:
                         # 202 Accepted = Challenge running, wait and retry
-                        # The session 's' will hold the new cookies
-                        time.sleep(5) # Wait significantly longest for challenge
+                        time.sleep(5) 
                         continue
                     else:
                         break 
@@ -111,29 +110,17 @@ class AutoDealScraper:
                     continue
 
                 soup = BeautifulSoup(response.text, 'html.parser')
-                
-                # NEW SELECTOR STRATEGY 2025-01-30
-                # Main listing container seems to be #results-view containing <article class="card">
                 listings = soup.select('#results-view article.card')
                 
                 if not listings:
-                    # Fallback for old layout just in case
                     listings = soup.select('.item-card, .vehicle-item, .search-item')
                 
                 for item in listings:
                     try:
-                        # Title is usually in h3 tag now
-                        title_elem = item.select_one('h3')
-                        if not title_elem:
-                            title_elem = item.select_one('.vehicle-title, .title')
-                            
-                        # Price is in h4 tag
-                        price_elem = item.select_one('h4')
-                        if not price_elem:
-                            price_elem = item.select_one('.price, .vehicle-price, .amount')
-                            
-                        # Link is usually within the first A tag inside the title/image container
+                        title_elem = item.select_one('h3') or item.select_one('.vehicle-title, .title')
+                        price_elem = item.select_one('h4') or item.select_one('.price, .vehicle-price, .amount')
                         link_elem = item.select_one('a')
+                        
                         link = ""
                         if link_elem and link_elem.has_attr('href'):
                             link = link_elem['href']
@@ -144,70 +131,60 @@ class AutoDealScraper:
                             title = title_elem.get_text(strip=True)
                             price_text = price_elem.get_text(strip=True)
                             
-                            # --- FILTERING ---
                             is_relevant = False
                             if make.lower() in title.lower():
                                 is_relevant = True
                             
-                            # Loose keyword check
                             if not is_relevant and use_generic_search:
-                                 query_parts = f"{make} {model}".split()
-                                 q_keywords = [k.lower() for k in query_parts if len(k) > 2]
-                                 if q_keywords and all(k in title.lower() for k in q_keywords):
-                                      is_relevant = True
+                                query_parts = f"{make} {model}".split()
+                                q_keywords = [k.lower() for k in query_parts if len(k) > 2]
+                                if q_keywords and all(k in title.lower() for k in q_keywords):
+                                    is_relevant = True
                             
                             if is_relevant:
-                                 # If strictly searching for a model (e.g. Vios), check it
-                                 model_match = True
-                                 if model:
-                                      model_keywords = model.lower().split()
-                                      if not all(k in title.lower() for k in model_keywords):
-                                           model_match = False
-                                 
-                                 if model_match:
-                                      if fuzzy_search:
-                                           match = True
-                                      else:
-                                           # If specific year requested
-                                           match = True # Default to true as year might not be in title
-                                           if year and str(year).isdigit():
-                                                year_str = str(year)
-                                                prev_year = str(int(year) - 1)
-                                                next_year = str(int(year) + 1)
-                                                if year_str in title:
-                                                     match = True
-                                                elif prev_year in title or next_year in title:
-                                                     match = True
-                                                else:
-                                                     match = False
-                                 
-                            if match:
-                                price = self._parse_price(price_text)
-                                if price > 30000:
-                                    # Extract Mileage if available
-                                    mileage_text = "N/A"
-                                    # Mileage is often in spans like <span>31,800 Km</span>
-                                    spans = item.find_all('span')
-                                    for s in spans:
-                                        t = s.get_text(strip=True)
-                                        if 'km' in t.lower():
-                                            mileage_text = t
-                                            break
+                                model_match = True
+                                if model:
+                                    model_keywords = model.lower().split()
+                                    if not all(k in title.lower() for k in model_keywords):
+                                        model_match = False
+                                
+                                if model_match:
+                                    match = True
+                                    if year and str(year).isdigit():
+                                        year_str = str(year)
+                                        if fuzzy_search:
+                                            prev_year = str(int(year) - 1)
+                                            next_year = str(int(year) + 1)
+                                            if year_str not in title and prev_year not in title and next_year not in title:
+                                                match = False
+                                        else:
+                                            if year_str not in title:
+                                                match = False
+                                    
+                                    if match:
+                                        price = self._parse_price(price_text)
+                                        if price > 30000:
+                                            mileage_text = "N/A"
+                                            spans = item.find_all('span')
+                                            for s_tag in spans:
+                                                t_str = s_tag.get_text(strip=True)
+                                                if 'km' in t_str.lower():
+                                                    mileage_text = t_str
+                                                    break
                                             
-                                    entry = {
-                                            'title': title,
-                                            'price': price,
-                                            'price_display': price_text.strip(),
-                                            'link': link,
-                                            'source': 'AutoDeal',
-                                            'mileage': mileage_text
-                                        }
+                                            entry = {
+                                                'title': title,
+                                                'price': price,
+                                                'price_display': price_text.strip(),
+                                                'link': link,
+                                                'source': 'AutoDeal',
+                                                'mileage': mileage_text
+                                            }
 
-                                    if entry['link'] not in [x['link'] for x in search_items]:
-                                        search_items.append(entry)
+                                            if entry['link'] not in [x['link'] for x in search_items]:
+                                                search_items.append(entry)
                                         
                     except Exception as e: 
-                        # print(f"Item parse error: {e}")
                         continue
                 
                 if len(search_items) >= 5: break

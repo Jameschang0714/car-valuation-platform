@@ -5,17 +5,20 @@ import philkotse_scraper
 import autodeal_scraper
 import carousell_scraper
 import automart_scraper
+import facebook_scraper
 
 # Force reload modules
 importlib.reload(philkotse_scraper)
 importlib.reload(autodeal_scraper)
 importlib.reload(carousell_scraper)
 importlib.reload(automart_scraper)
+importlib.reload(facebook_scraper)
 
 from philkotse_scraper import PhilkotseScraper
 from autodeal_scraper import AutoDealScraper
 from carousell_scraper import CarousellScraper
 from automart_scraper import AutomartScraper
+from facebook_scraper import FacebookScraper
 from utils import calculate_market_price, format_currency, TRANSLATIONS
 import time
 import re
@@ -90,6 +93,7 @@ with st.sidebar:
     use_autodeal = st.checkbox("AutoDeal", value=True)
     use_automart = st.checkbox("Automart", value=True)
     use_carousell = st.checkbox("Carousell", value=True)
+    use_facebook = st.checkbox("FB Marketplace", value=True)
 
     search_btn = st.button(t('search_btn'), type="primary")
 
@@ -136,6 +140,7 @@ if search_btn:
         if use_autodeal: scrapers.append(AutoDealScraper())
         if use_carousell: scrapers.append(CarousellScraper())
         if use_automart: scrapers.append(AutomartScraper())
+        if use_facebook: scrapers.append(FacebookScraper())
         
         all_results = []
         
