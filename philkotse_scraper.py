@@ -80,7 +80,11 @@ class PhilkotseScraper:
              # Fallback for strict mode too: Add general search
              unique_paths.append(f"/cars-for-sale?q={urllib.parse.quote(make)}")
 
+        seen_links = set()
+        
         for path in unique_paths:
+            if len(search_items) >= 20: break # Stop if we have enough
+            
             url = self.base_url + path if not path.startswith("http") else path
             
             try:
@@ -99,6 +103,7 @@ class PhilkotseScraper:
                     continue
                 
                 soup = BeautifulSoup(response.text, 'html.parser')
+                # Reverting to broad selectors but relying on seen_links for dedup
                 listings = soup.select('.col-4, .list-car-item, .item, .car-item')
                 
                 for item in listings:
@@ -114,7 +119,10 @@ class PhilkotseScraper:
                             
                             if not link.startswith('http'):
                                 link = self.base_url + link
-                                
+                            
+                            # DEDUPLICATION CHECK
+                            if link in seen_links: continue
+                            
                             # Image extraction
                             image_url = ""
                             img_elem = item.select_one('img')
@@ -158,6 +166,7 @@ class PhilkotseScraper:
                                 if matched_year:
                                     price = self._parse_price(price_text)
                                     if price > 0:
+                                        seen_links.add(link)
                                         search_items.append({
                                             'title': title,
                                             'price': price,
@@ -172,8 +181,8 @@ class PhilkotseScraper:
             except Exception as e:
                 print(f"Error fetching {url}: {e}")
                 
-            if search_items:
-                break
+            # Removed the single-path break; let it iterate to find more results
+            # if search_items: break 
             
             time.sleep(random.uniform(1, 2))
             
