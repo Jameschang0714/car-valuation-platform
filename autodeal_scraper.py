@@ -46,19 +46,40 @@ class AutoDealScraper:
                 with open("scraper_debug.log", "a", encoding="utf-8") as f:
                      f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] AutoDeal: 嘗試抓取 {url}\n")
                 
-                # Implement Retry Logic with Session for Cookie Persistence
+                # Implement Robust Session Logic (v3.3.6)
                 max_retries = 3
                 browser_types = ["chrome110", "edge101", "safari15_5"]
                 
-                # Use a session to persist cookies (vital for 202 challenges)
-                s = cffi_requests.Session()
+                # 1. Pick ONE fingerprint for the entire session
+                chosen_browser = random.choice(browser_types)
                 
-                for attempt in range(max_retries):
-                    # Randomize browser for the session
-                    impersonate_browser = random.choice(browser_types)
+                # 2. Initialize Session
+                s = cffi_requests.Session(impersonate=chosen_browser)
+                
+                # 3. WARM-UP: Visit Homepage to get initial cookies/clearance
+                try:
+                    with open("scraper_debug.log", "a", encoding="utf-8") as f:
+                        f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] AutoDeal: 暖身訪問首頁 (Browser: {chosen_browser})...\n")
                     
+                    s.get(
+                        "https://www.autodeal.com.ph/",
+                        headers={
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36", # Fallback UA
+                            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                            "Accept-Language": "en-US,en;q=0.9",
+                        },
+                        timeout=15
+                    )
+                    time.sleep(random.uniform(2, 4))
+                except Exception as e:
+                    with open("scraper_debug.log", "a", encoding="utf-8") as f:
+                        f.write(f"AutoDeal Warmup Failed: {e}\n")
+
+                # 4. TARGET REQUEST
+                response = None
+                for attempt in range(max_retries):
                     # Random delay before request
-                    time.sleep(random.uniform(1, 4))
+                    time.sleep(random.uniform(2, 5))
                     
                     headers = {
                         "Referer": "https://www.autodeal.com.ph/used-cars",
@@ -66,28 +87,27 @@ class AutoDealScraper:
                         "Authority": "www.autodeal.com.ph"
                     }
 
-                    # Use session
+                    # Use session (fingerprint is already set)
                     response = s.get(
                         url, 
-                        impersonate=impersonate_browser, 
                         timeout=30,
                         headers=headers
                     )
                     
                     with open("scraper_debug.log", "a", encoding="utf-8") as f:
-                        f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] AutoDeal (Attempt {attempt+1}): 回傳狀態碼 {response.status_code} (Browser: {impersonate_browser})\n")
+                        f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] AutoDeal (Attempt {attempt+1}): 回傳狀態碼 {response.status_code}\n")
 
                     if response.status_code == 200:
                         break
                     elif response.status_code == 202:
                         # 202 Accepted = Challenge running, wait and retry
                         # The session 's' will hold the new cookies
-                        time.sleep(3) # Wait longer for challenge to clear
+                        time.sleep(5) # Wait significantly longest for challenge
                         continue
                     else:
                         break 
-
-                if response.status_code != 200:
+                
+                if not response or response.status_code != 200:
                     continue
 
                 soup = BeautifulSoup(response.text, 'html.parser')

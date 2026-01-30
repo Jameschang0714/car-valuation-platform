@@ -23,18 +23,33 @@ class CarousellScraper:
         # We only set Referer (sometimes helpful) but let impersonate manage User-Agent and others.
         
         try:
-            # Randomize browser fingerprint to evade WAF
+            # Power-up: Robust Session Logic (v3.3.6)
             browser_types = ["chrome110", "edge101", "safari15_5"]
-            impersonate_browser = random.choice(browser_types)
+            chosen_browser = random.choice(browser_types)
             
-            # Add random delay
-            time.sleep(random.uniform(1, 3))
+            # 1. Init Session with fixed fingerprint
+            s = cffi_requests.Session(impersonate=chosen_browser)
+            
+            # 2. WARM-UP
+            try:
+                with open("scraper_debug.log", "a", encoding="utf-8") as f:
+                     f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Carousell (CFFI): 暖身訪問首頁 (Browser: {chosen_browser})...\n")
+                
+                s.get(
+                    "https://www.carousell.ph/",
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
+                        "Accept-Language": "en-US,en;q=0.9",
+                    },
+                    timeout=15
+                )
+                time.sleep(random.uniform(2, 4))
+            except: pass
 
-            with open("scraper_debug.log", "a", encoding="utf-8") as f:
-                f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Carousell (CFFI): 嘗試抓取 {url} (Browser: {impersonate_browser})\n")
+            url = f"{self.base_url}/search/{encoded_query}/?category_id=32&sort_by=3"
             
-            # Use Session to hold cookies/state
-            s = cffi_requests.Session()
+            with open("scraper_debug.log", "a", encoding="utf-8") as f:
+                f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Carousell: 嘗試抓取 {url}\n")
             
             headers = {
                 "Referer": "https://www.carousell.ph/",
@@ -42,10 +57,9 @@ class CarousellScraper:
                 "Accept-Language": "en-US,en;q=0.9"
             }
 
-            # Use curl_cffi to bypass TLS fingerprinting
+            # 3. Request
             response = s.get(
                 url, 
-                impersonate=impersonate_browser, 
                 timeout=30,
                 verify=False,
                 headers=headers
