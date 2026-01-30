@@ -46,22 +46,32 @@ class AutoDealScraper:
                 with open("scraper_debug.log", "a", encoding="utf-8") as f:
                      f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] AutoDeal: 嘗試抓取 {url}\n")
                 
-                # Implement Retry Logic for 202 (Processing/Cloudflare)
+                # Implement Retry Logic with Session for Cookie Persistence
                 max_retries = 3
                 browser_types = ["chrome110", "edge101", "safari15_5"]
                 
+                # Use a session to persist cookies (vital for 202 challenges)
+                s = cffi_requests.Session()
+                
                 for attempt in range(max_retries):
-                    # Randomize browser
+                    # Randomize browser for the session
                     impersonate_browser = random.choice(browser_types)
                     
                     # Random delay before request
-                    time.sleep(random.uniform(1, 3))
+                    time.sleep(random.uniform(1, 4))
+                    
+                    headers = {
+                        "Referer": "https://www.autodeal.com.ph/used-cars",
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Authority": "www.autodeal.com.ph"
+                    }
 
-                    # Use curl_cffi
-                    response = cffi_requests.get(
+                    # Use session
+                    response = s.get(
                         url, 
                         impersonate=impersonate_browser, 
-                        timeout=30
+                        timeout=30,
+                        headers=headers
                     )
                     
                     with open("scraper_debug.log", "a", encoding="utf-8") as f:
@@ -71,10 +81,11 @@ class AutoDealScraper:
                         break
                     elif response.status_code == 202:
                         # 202 Accepted = Challenge running, wait and retry
-                        time.sleep(2)
+                        # The session 's' will hold the new cookies
+                        time.sleep(3) # Wait longer for challenge to clear
                         continue
                     else:
-                        break # Other errors, probably real errors or 404
+                        break 
 
                 if response.status_code != 200:
                     continue

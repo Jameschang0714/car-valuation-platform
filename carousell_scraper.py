@@ -33,12 +33,22 @@ class CarousellScraper:
             with open("scraper_debug.log", "a", encoding="utf-8") as f:
                 f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Carousell (CFFI): 嘗試抓取 {url} (Browser: {impersonate_browser})\n")
             
+            # Use Session to hold cookies/state
+            s = cffi_requests.Session()
+            
+            headers = {
+                "Referer": "https://www.carousell.ph/",
+                "Origin": "https://www.carousell.ph",
+                "Accept-Language": "en-US,en;q=0.9"
+            }
+
             # Use curl_cffi to bypass TLS fingerprinting
-            response = cffi_requests.get(
+            response = s.get(
                 url, 
                 impersonate=impersonate_browser, 
                 timeout=30,
-                verify=False
+                verify=False,
+                headers=headers
             )
             
             with open("scraper_debug.log", "a", encoding="utf-8") as f:
