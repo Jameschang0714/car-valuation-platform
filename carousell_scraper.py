@@ -32,7 +32,8 @@ class CarousellScraper:
             response = cffi_requests.get(
                 url, 
                 impersonate="chrome124", 
-                timeout=30
+                timeout=30,
+                verify=False
             )
             
             with open("scraper_debug.log", "a", encoding="utf-8") as f:

@@ -61,7 +61,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title('🇵🇭 Philippines Used Car Price Searcher (v3.3.1 - Stable)')
+st.title('🇵🇭 Philippines Used Car Price Searcher (v3.3.2 - Stable)')
 st.write(t('app_subtitle'))
 
 # Sidebar for inputs
@@ -228,25 +228,27 @@ if search_btn:
     else:
         st.warning(t('no_results'))
 
-        # Debug Console
-        with st.expander(t('developer_tools')):
-            st.write(t('logs_title'))
-            for source, count in st.session_state.get('last_run_logs', {}).items():
-                st.write(f"- {source}: {count}")
-            
-            st.markdown("---")
-            st.write(t('detailed_logs'))
-            try:
-                with open("scraper_debug.log", "r", encoding="utf-8") as f:
-                    log_content = f.readlines()
-                    # Show last 50 lines
-                    st.code("".join(log_content[-50:]))
-            except:
-                st.write(t('no_logs'))
+
         
         # Add a manual refresh for logs
         if st.toggle("Show Raw Search Results (Debug)"):
              st.json(all_results)
+
+# Debug Console (Always Visible)
+with st.expander(t('developer_tools')):
+    st.write(t('logs_title'))
+    for source, count in st.session_state.get('last_run_logs', {}).items():
+        st.write(f"- {source}: {count}")
+    
+    st.markdown("---")
+    st.write(t('detailed_logs'))
+    try:
+        with open("scraper_debug.log", "r", encoding="utf-8") as f:
+            log_content = f.readlines()
+            # Show last 50 lines
+            st.code("".join(log_content[-50:]))
+    except:
+        st.write(t('no_logs'))
 
 # Footer
 st.markdown("---")
