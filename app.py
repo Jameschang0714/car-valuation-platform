@@ -79,6 +79,10 @@ with st.sidebar:
     model = st.text_input(t('model'), value="", placeholder="Optional (e.g. Vios, Wing Van)")
     year = st.text_input(t('year'), value="", placeholder="Optional (e.g. 2023)")
     
+    # Lock Year Toggle (Checkbox logic: lock_year=True means fuzzy_search=False)
+    lock_year = st.checkbox(t('lock_year'), value=False, help=t('lock_year_help'))
+    fuzzy_search = not lock_year
+    
     st.divider()
     
     st.subheader(t('platforms'))
@@ -89,12 +93,11 @@ with st.sidebar:
 
     search_btn = st.button(t('search_btn'), type="primary")
 
-def run_scraper(scraper_class, make, model, year):
+def run_scraper(scraper_class, make, model, year, fuzzy_search):
     scraper = scraper_class()
     source_name = scraper.__class__.__name__.replace("Scraper", "")
     try:
-        # Note: fuzzy_search is not passed here, assuming default behavior or not needed for this version
-        results = scraper.search(make, model, year)
+        results = scraper.search(make, model, year, fuzzy_search=fuzzy_search)
         # st.toast(f"{source_name}: 找到 {len(results)} 筆結果") # Streamlit functions cannot be called directly in threads
         return results
     except Exception as e:
@@ -143,7 +146,7 @@ if search_btn:
             status_text.text(t('crawling').format(source_name))
             
             try:
-                results = scraper.search(make, model, year)
+                results = scraper.search(make, model, year, fuzzy_search=fuzzy_search)
                 all_results.extend(results)
                 
                 # Show status in debug log/toast

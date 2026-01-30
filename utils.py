@@ -44,7 +44,9 @@ TRANSLATIONS = {
         'market_price': 'Suggested Market Price',
         'based_on': 'Calculated based on {} results',
         'chart_title': '📈 Price Distribution',
-        'language': 'Language / 語言'
+        'language': 'Language / 語言',
+        'lock_year': 'Lock Year (Exact search)',
+        'lock_year_help': 'When checked, only searches for the exact year. Uncheck to include +/- 1 year.'
     },
     'zh': {
         'app_title': '🇵🇭 菲律賓二手車行情搜尋器',
@@ -71,7 +73,9 @@ TRANSLATIONS = {
         'market_price': '建議市場成交價',
         'based_on': '基於 {} 筆搜尋結果計算而成',
         'chart_title': '📈 價格分佈',
-        'language': 'Language / 語言'
+        'language': 'Language / 語言',
+        'lock_year': '鎖定年份 (精確搜尋)',
+        'lock_year_help': '勾選後僅搜尋輸入的年份。取消勾選則包含前後一年的結果。'
     }
 }
 
