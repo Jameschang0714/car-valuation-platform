@@ -12,6 +12,7 @@ env/
 # Logs
 *.log
 scraper_debug.log
+autodeal_debug_live.html
 
 # Streamlit
 .streamlit/

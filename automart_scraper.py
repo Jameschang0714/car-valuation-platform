@@ -71,7 +71,10 @@ class AutomartScraper:
         except Exception as e:
             with open("scraper_debug.log", "a", encoding="utf-8") as f:
                 f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Automart Error: {e}\n")
-            print(f"Automart API Error: {e}")
+            try:
+                print(f"Automart API Error: {e}")
+            except:
+                print("Automart API Error: (encoding error)")
             
         return results
 

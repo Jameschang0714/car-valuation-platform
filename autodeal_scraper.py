@@ -12,7 +12,7 @@ class AutoDealScraper:
     def search(self, make, model, year, fuzzy_search=True):
         search_items = []
         
-        # Normalize for URL slugs - AutoDeal often prefers Title-Case for makes
+        # Normalize for URL slugs
         make_slug = make.strip().replace(" ", "-").lower()
         model_slug = model.strip().replace(" ", "-").lower() if model else ""
         
@@ -32,13 +32,12 @@ class AutoDealScraper:
             # Strict mode
             if year and str(year).isdigit():
                 target_year = int(year)
-                # Try specific range
                 unique_urls.append(f"{self.base_url}/used-cars/search/used-car-status/{make_slug}-make/{model_slug}-model/{target_year}-year/page-1?sort-by=relevance")
             
             # General model search
             unique_urls.append(f"{self.base_url}/used-cars/search/used-car-status/{make_slug}-make/{model_slug}-model/page-1?sort-by=relevance")
 
-            # Fallback to Make search if strict fails
+            # Fallback
             unique_urls.append(f"{self.base_url}/used-cars/search/{make_slug}%20{model_slug}")
 
         for url in unique_urls:
@@ -61,16 +60,39 @@ class AutoDealScraper:
                     continue
 
                 soup = BeautifulSoup(response.text, 'html.parser')
-                listings = soup.select('.item-card, .vehicle-item, .search-item')
+                
+                # NEW SELECTOR STRATEGY 2025-01-30
+                # Main listing container seems to be #results-view containing <article class="card">
+                listings = soup.select('#results-view article.card')
+                
+                if not listings:
+                    # Fallback for old layout just in case
+                    listings = soup.select('.item-card, .vehicle-item, .search-item')
                 
                 for item in listings:
                     try:
-                        title_elem = item.select_one('.vehicle-title, h2, h3, .title')
-                        price_elem = item.select_one('.price, .vehicle-price, .amount')
+                        # Title is usually in h3 tag now
+                        title_elem = item.select_one('h3')
+                        if not title_elem:
+                            title_elem = item.select_one('.vehicle-title, .title')
+                            
+                        # Price is in h4 tag
+                        price_elem = item.select_one('h4')
+                        if not price_elem:
+                            price_elem = item.select_one('.price, .vehicle-price, .amount')
+                            
+                        # Link is usually within the first A tag inside the title/image container
                         link_elem = item.select_one('a')
+                        link = ""
+                        if link_elem and link_elem.has_attr('href'):
+                            link = link_elem['href']
+                            if not link.startswith('http'):
+                                link = self.base_url + link
 
                         if title_elem and price_elem:
                             title = title_elem.get_text(strip=True)
+                            price_text = price_elem.get_text(strip=True)
+                            
                             # --- FILTERING ---
                             is_relevant = False
                             if make.lower() in title.lower():
@@ -85,7 +107,6 @@ class AutoDealScraper:
                             
                             if is_relevant:
                                  # If strictly searching for a model (e.g. Vios), check it
-                                 # If generic (Wing Van), check if keywords present
                                  model_match = True
                                  if model:
                                       model_keywords = model.lower().split()
@@ -97,27 +118,46 @@ class AutoDealScraper:
                                            match = True
                                       else:
                                            # If specific year requested
+                                           match = True # Default to true as year might not be in title
                                            if year and str(year).isdigit():
                                                 year_str = str(year)
                                                 prev_year = str(int(year) - 1)
                                                 next_year = str(int(year) + 1)
-                                                if year_str in title or prev_year in title or next_year in title:
+                                                if year_str in title:
                                                      match = True
-                                           else:
-                                                match = True # No year requirement
+                                                elif prev_year in title or next_year in title:
+                                                     match = True
+                                                else:
+                                                     match = False
                                  
                             if match:
                                 price = self._parse_price(price_text)
                                 if price > 30000:
-                                    if link not in [x['link'] for x in search_items]:
-                                        search_items.append({
+                                    # Extract Mileage if available
+                                    mileage_text = "N/A"
+                                    # Mileage is often in spans like <span>31,800 Km</span>
+                                    spans = item.find_all('span')
+                                    for s in spans:
+                                        t = s.get_text(strip=True)
+                                        if 'km' in t.lower():
+                                            mileage_text = t
+                                            break
+                                            
+                                    entry = {
                                             'title': title,
                                             'price': price,
                                             'price_display': price_text.strip(),
                                             'link': link,
-                                            'source': 'AutoDeal'
-                                        })
-                    except: continue
+                                            'source': 'AutoDeal',
+                                            'mileage': mileage_text
+                                        }
+
+                                    if entry['link'] not in [x['link'] for x in search_items]:
+                                        search_items.append(entry)
+                                        
+                    except Exception as e: 
+                        # print(f"Item parse error: {e}")
+                        continue
                 
                 if len(search_items) >= 5: break
             except Exception as e:
