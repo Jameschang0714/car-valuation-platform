@@ -21,7 +21,7 @@ def format_currency(amount):
 TRANSLATIONS = {
     'en': {
         'app_title': '🇵🇭 Philippines Used Car Price Searcher',
-        'app_subtitle': 'Mabuhay! Input car details to search across major Philippine platforms. (v3.3 - Stable)',
+        'app_subtitle': 'Mabuhay! Input car details to search across major Philippine platforms. (v3.3.1 - Stable)',
         'search_params': 'Search Parameters',
         'make': 'Make (Brand)',
         'model': 'Model',
@@ -48,7 +48,7 @@ TRANSLATIONS = {
     },
     'zh': {
         'app_title': '🇵🇭 菲律賓二手車行情搜尋器',
-        'app_subtitle': '輸入車輛資訊，自動搜尋菲律賓各大拍賣平台行情。(版本: 3.1 - 卡車特別版)',
+        'app_subtitle': '輸入車輛資訊，自動搜尋菲律賓各大拍賣平台行情。(版本: 3.3.1 - 修復版)',
         'search_params': '搜尋條件',
         'make': '品牌 (Make)',
         'model': '車型 (Model)',
