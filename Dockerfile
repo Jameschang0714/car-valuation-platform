@@ -1,14 +1,24 @@
-# Use official Python image
-FROM python:3.11-slim
+# Stage 1: Build & Dependencies
+FROM python:3.11-slim as builder
 
-# Set working directory
 WORKDIR /app
+COPY requirements.txt .
 
-# Install system dependencies
+# Install build dependencies and python packages
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
-    git \
+    && pip3 install --user -r requirements.txt \
+    && rm -rf /var/lib/apt/lists/*
+
+# Stage 2: Final Runtime
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install only necessary runtime libraries for Playwright
+RUN apt-get update && apt-get install -y \
+    curl \
     libnss3 \
     libnspr4 \
     libatk1.0-0 \
@@ -28,21 +38,20 @@ RUN apt-get update && apt-get install -y \
     libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy local code to container
+# Copy python packages from builder
+COPY --from=builder /root/.local /root/.local
+ENV PATH=/root/.local/bin:$PATH
+
+# Copy application code
 COPY . .
 
-# Install Python dependencies
-RUN pip3 install -r requirements.txt
+# Install Playwright browsers (chromium) and then CLEAN UP
+RUN playwright install chromium \
+    && playwright install-deps chromium \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Playwright browsers (chromium)
-RUN playwright install chromium
-RUN playwright install-deps chromium
-
-# Expose Streamlit port
 EXPOSE 8501
 
-# Healthcheck
 HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health
 
-# Run Streamlit
 ENTRYPOINT ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
