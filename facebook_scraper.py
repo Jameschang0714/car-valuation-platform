@@ -22,110 +22,101 @@ class FacebookScraper:
     def search(self, make, model, year, fuzzy_search=True):
         results = []
         browser = None
-        self._log(f"開始搜尋 {make} {model} {year} (Stealth 桌面模式)")
+        self._log(f"開始搜尋 {make} {model} {year} (mbasic 模式)")
         try:
             with sync_playwright() as p:
-                self._log("正在啟動 Stealth Chromium...")
+                self._log("正在啟動 Chromium...")
                 try:
                     browser = p.chromium.launch(headless=True)
                 except Exception as b_err:
                     self._log(f"瀏覽器啟動失敗: {b_err}")
                     raise b_err
 
-                # 強化隱身標頭
-                stealth_context = {
-                    'viewport': {'width': 1366, 'height': 768},
-                    'user_agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-                    'locale': "en-PH",
-                    'extra_http_headers': {
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                        'Accept-Language': 'en-PH,en-US;q=0.9,en;q=0.8',
-                        'Referer': 'https://www.facebook.com/',
-                        'Sec-Fetch-Dest': 'document',
-                        'Sec-Fetch-Mode': 'navigate',
-                        'Sec-Fetch-Site': 'same-origin',
-                        'Sec-Fetch-User': '?1',
-                        'Upgrade-Insecure-Requests': '1'
-                    }
-                }
-                
-                context = browser.new_context(**stealth_context)
+                # mbasic 模式不需要太複雜的 context
+                context = browser.new_context(
+                    user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36",
+                    locale="en-PH"
+                )
                 page = context.new_page()
                 
                 query = f"{make} {model}"
                 if year: query += f" {year}"
                 
-                # 使用馬尼拉特定的地區 ID (108155919213134)
-                # 這種方式通常比全局 /marketplace/search/ 更容易繞過登入牆
-                url = f"https://www.facebook.com/marketplace/108155919213134/search?query={query.replace(' ', '%20')}"
+                # mbasic 的搜尋 URL
+                url = f"https://mbasic.facebook.com/marketplace/search/?query={query.replace(' ', '%20')}"
                 
-                self._log(f"正在前往馬尼拉地區 Marketplace: {url}")
+                self._log(f"正在前往 mbasic Marketplace: {url}")
+                # mbasic 頁面非常輕量，通常不需要等待 networkidle
                 page.goto(url, wait_until="domcontentloaded", timeout=60000)
                 
-                self._log("執行頁面解析與抗阻斷延遲...")
-                time.sleep(random.uniform(6, 10))
+                # 增加穩定的處理延遲
+                time.sleep(random.uniform(4, 7))
                 
                 title = page.title()
                 content_len = len(page.content())
-                self._log(f"頁面載入完成。標題: {title}, 長度: {content_len}")
+                self._log(f"mbasic 頁面載入。標題: {title}, 長度: {content_len}")
 
+                # mbasic 通常不會有逃脫鍵需求，但為了保險保留
                 if "Log In" in title or "登入" in title:
-                    self._log("偵測到登入牆，嘗試發送逃脫鍵並觸發滾動...")
-                    page.keyboard.press("Escape")
-                    time.sleep(2)
-                
-                # 滾動以加載
-                for i in range(3):
-                    page.evaluate(f"window.scrollBy(0, 800)")
-                    time.sleep(2)
+                    self._log("警告：mbasic 仍顯示登入提示，嘗試繼續解析內容...")
 
-                self._log("開始深度提取商品特徵連結...")
-                all_links = page.query_selector_all('a')
-                self._log(f"發現 {len(all_links)} 個原始連結，執行特徵匹配...")
+                self._log("開始提取 mbasic 連結...")
+                # mbasic 的連結通常很直接
+                all_links = page.query_selector_all('a[href*="/marketplace/item/"]')
+                # 如果找不到，嘗試正則匹配所有 a
+                if not all_links:
+                    all_links = [a for a in page.query_selector_all('a') if "/marketplace/item/" in (a.get_attribute('href') or "")]
+                
+                self._log(f"發現 {len(all_links)} 個包含 marketplace 的連結，啟動 mbasic 解析器...")
                 
                 processed_raw = []
-                # 診斷用：記錄前 3 個包含 marketplace 字樣的連結內容
-                debug_count = 0
-                
                 for link in all_links:
                     try:
                         href = link.get_attribute('href') or ""
-                        if "/marketplace/item/" in href:
-                            text = link.inner_text() or link.get_attribute('aria-label') or ""
-                            
-                            # 診斷：將前幾個找到的連結文字印出，以便確認格式
-                            if debug_count < 3 and text:
-                                clean_text = text.replace('\n', ' | ')
-                                self._log(f"DEBUG - 連結文字 {debug_count+1}: {clean_text[:100]}...")
-                                debug_count += 1
+                        # mbasic 的文字通常就在 <a> 標籤內或其父節點
+                        # 我們向上找一層或拿自己的 inner_text
+                        text = link.inner_text() or ""
+                        if not text:
+                            # 嘗試獲取父級文字（mbasic 結構常將圖片與文字分開在 div 內）
+                            text = link.evaluate("el => el.parentElement.innerText")
+                        
+                        if not text or len(text) < 5: continue
+                        
+                        # 診斷日誌
+                        if len(processed_raw) < 2:
+                            self._log(f"mbasic 樣本輸出: {text.replace('\n', ' | ')[:100]}...")
 
-                            if not text or len(text) < 5: continue
+                        # 價格解析
+                        price_match = re.search(r'(?:₱|PHP|\$)\s*([\d,.]+)', text)
+                        if price_match:
+                            p_str = price_match.group(1).replace(",", "")
+                            try:
+                                p_val = int(float(p_str)) if '.' in p_str else int(p_str.replace('.', ''))
+                            except: continue
                             
-                            # 強化價格匹配：支援更多格式，包含只有數字且帶有逗號的情況
-                            # 有時價格會被拆分，我們先找包含 ₱ 或 PHP 的，如果沒有，找 5 位數以上的純數字 (過濾掉年份)
-                            price_match = re.search(r'(?:₱|PHP|\$)\s*([\d,.]+)', text)
+                            if '$' in price_match.group(0) and p_val < 50000: p_val *= 56
+                            if p_val < 15000: continue
                             
-                            if price_match:
-                                p_str = price_match.group(1).replace(",", "")
-                                try:
-                                    p_val = int(float(p_str)) if '.' in p_str else int(p_str.replace('.', ''))
-                                except: continue
-                                
-                                if '$' in price_match.group(0) and p_val < 50000: p_val *= 56
-                                if p_val < 15000: continue
-                                
-                                lines = [l.strip() for l in text.split('\n') if l.strip()]
-                                item_title = next((l for l in lines if not re.search(r'(?:₱|PHP|\$|·)', l)), "Vehicle")
-                                
-                                full_link = self.base_url + href if href.startswith('/') else href
-                                
-                                processed_raw.append({
-                                    'title': item_title, 'price': p_val, 'price_display': f"₱{p_val:,}",
-                                    'link': full_link, 'source': 'FB Marketplace', 'raw_text': text.lower()
-                                })
+                            lines = [l.strip() for l in text.split('\n') if l.strip()]
+                            # mbasic 的標題通常是第一行文字（排除價格行）
+                            item_title = next((l for l in lines if not re.search(r'(?:₱|PHP|\$|·)', l)), "Vehicle")
+                            
+                            # 轉換為標準 FB 網址
+                            item_id = ""
+                            id_match = re.search(r'/item/(\d+)', href)
+                            if id_match:
+                                item_id = id_match.group(1)
+                                full_link = f"https://www.facebook.com/marketplace/item/{item_id}/"
+                            else:
+                                full_link = "https://www.facebook.com" + href if href.startswith('/') else href
+
+                            processed_raw.append({
+                                'title': item_title, 'price': p_val, 'price_display': f"₱{p_val:,}",
+                                'link': full_link, 'source': 'FB Marketplace', 'raw_text': text.lower()
+                            })
                     except: continue
 
-                self._log(f"成功提取 {len(processed_raw)} 筆潛在商品，進入精確過濾...")
+                self._log(f"mbasic 成功獲取 {len(processed_raw)} 筆原始商品資料")
                 # ... (過濾邏輯)
                 seen = set()
                 make_lower = make.lower().strip()
