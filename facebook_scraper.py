@@ -42,33 +42,62 @@ class FacebookScraper:
                 
                 query = f"{make} {model}"
                 if year: query += f" {year}"
-                query_formatted = query.replace(' ', '%20')
-                # 移除 /manila/，改用更廣泛的搜尋路徑
-                url = f"{self.base_url}/marketplace/search/?query={query_formatted}"
+                # 改用更擬真的搜尋路徑
+                # 先前往 Marketplace 首頁，再進行搜尋
+                url = f"{self.base_url}/marketplace/search/?query={query.replace(' ', '%20')}"
                 
                 self._log(f"正在前往 Marketplace: {url}")
-                page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                # 增加更長的隨機延遲並使用隨機的桌面級 User-Agent
+                page.goto(url, wait_until="networkidle", timeout=60000)
                 
-                self._log("等待頁面載入並處理彈窗...")
-                time.sleep(8)
+                self._log("等待頁面加載並嘗試對抗登入牆...")
+                time.sleep(random.uniform(5, 10))
+                
+                # 再次模擬真人嘗試關閉彈窗
                 page.keyboard.press("Escape")
                 
-                self._log("開始提取連結...")
-                all_links = page.query_selector_all('a')
-                self._log(f"發現 {len(all_links)} 個連結，開始過濾...")
+                self._log("偵核頁面標題與內容長度...")
+                title = page.title()
+                content_len = len(page.content())
+                self._log(f"標題: {title}, 內容長度: {content_len}")
+
+                if "Log In" in title or "登入" in title:
+                    self._log("警告：遇到了登入牆，嘗試進行滾動以觸發延遲加載")
+                
+                page.evaluate("window.scrollTo(0, document.body.scrollHeight/2)")
+                time.sleep(3)
+                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                time.sleep(3)
+
+                self._log("開始提取所有具備商品特徵的連結...")
+                all_links = page.query_selector_all('a[href*="/marketplace/item/"]')
+                # 如果找不到具備明顯特徵的，擴大搜尋範圍
+                if not all_links:
+                    self._log("未發現標準 item 連結，嘗試獲取所有連結並正則匹配...")
+                    all_links = page.query_selector_all('a')
+                
+                self._log(f"初步發現 {len(all_links)} 個潛在連結，開始深度解析...")
                 processed_raw = []
                 
-                # ... (rest of the logic remains same, but I'll add a few more logs)
                 for link in all_links:
                     try:
                         href = link.get_attribute('href') or ""
-                        if "/marketplace/item/" in href or re.search(r'/\d{10,}/', href):
+                        # 檢查網址是否包含商品特徵：/marketplace/item/ 或一串純數字（ID）
+                        is_item = "/marketplace/item/" in href or (re.search(r'/\d{10,}/', href) and "marketplace" in href)
+                        
+                        if is_item:
                             aria = link.get_attribute('aria-label')
                             inner = link.inner_text()
                             text = aria or inner or link.get_attribute('title')
+                            
+                            # 強化：如果 text 很短，嘗試找鄰近的文字（FB 結構常變動）
+                            if not text or len(text) < 10:
+                                # 嘗試獲取父層或子層文字
+                                text = link.evaluate("el => el.innerText")
+                            
                             if not text or len(text) < 5: continue
                             
-                            # (價格提取代碼保持不變)
+                            # (後續過濾邏輯保持不變)
                             price_match = re.search(r'(?:₱|PHP|\$)\s*([\d,.]+)', text)
                             if price_match:
                                 p_str = price_match.group(1).replace(",", "")
@@ -77,24 +106,32 @@ class FacebookScraper:
                                     else: p_val = int(p_str.replace('.', ''))
                                 except: continue
                                 
-                                title = ""
+                                # 匯率轉換
+                                if '$' in price_match.group(0) and p_val < 50000: p_val *= 56
+                                if p_val < 15000: continue
+                                
+                                item_title = ""
                                 if aria:
                                     parts = [p.strip() for p in re.split(r'·| - |\|', aria) if p.strip()]
-                                    title = next((p for p in parts if not re.search(r'(?:₱|PHP|\$)\s*[\d,.]+', p)), "")
+                                    item_title = next((p for p in parts if not re.search(r'(?:₱|PHP|\$)\s*[\d,.]+', p)), "")
                                 
-                                if not title:
+                                if not item_title:
                                     lines = [l.strip() for l in text.split('\n') if l.strip()]
                                     cands = [l for l in lines if not re.search(r'(?:₱|PHP|\$)\s*[\d,.]+', l)]
-                                    title = next((l for l in cands if make.lower() in l.lower()), cands[0] if cands else "Vehicle")
+                                    item_title = next((l for l in cands if make.lower() in l.lower()), cands[0] if cands else "Vehicle")
                                 
+                                # 補上 facebook.com 前綴
+                                full_link = href
+                                if href.startswith('/'): full_link = self.base_url + href
+                                elif "facebook.com" not in href: full_link = self.base_url + "/marketplace/item/" + href.split('/')[-1]
+
                                 processed_raw.append({
-                                    'title': title, 'price': p_val, 'price_display': f"₱{p_val:,}",
-                                    'link': self.base_url + href if href.startswith('/') else href,
-                                    'source': 'FB Marketplace', 'raw_text': text.lower()
+                                    'title': item_title, 'price': p_val, 'price_display': f"₱{p_val:,}",
+                                    'link': full_link, 'source': 'FB Marketplace', 'raw_text': text.lower()
                                 })
                     except: continue
 
-                self._log(f"初步獲取 {len(processed_raw)} 筆原始資料，開始精確過濾...")
+                self._log(f"初步獲取 {len(processed_raw)} 筆符合價格特徵的原始資料，開始品牌/年份過濾...")
                 # ... (過濾邏輯)
                 seen = set()
                 make_lower = make.lower().strip()
