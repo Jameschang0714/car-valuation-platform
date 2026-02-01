@@ -133,10 +133,6 @@ class FacebookScraper:
             if browser:
                 try: browser.close()
                 except: pass
-        finally:
-            if browser:
-                try: browser.close()
-                except: pass
 
 if __name__ == "__main__":
     s = FacebookScraper()
