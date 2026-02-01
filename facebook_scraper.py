@@ -42,7 +42,9 @@ class FacebookScraper:
                 
                 query = f"{make} {model}"
                 if year: query += f" {year}"
-                url = f"{self.base_url}/marketplace/manila/search?query={query.replace(' ', '%20')}"
+                query_formatted = query.replace(' ', '%20')
+                # 移除 /manila/，改用更廣泛的搜尋路徑
+                url = f"{self.base_url}/marketplace/search/?query={query_formatted}"
                 
                 self._log(f"正在前往 Marketplace: {url}")
                 page.goto(url, wait_until="domcontentloaded", timeout=60000)

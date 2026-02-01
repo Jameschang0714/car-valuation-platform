@@ -64,7 +64,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title('🇵🇭 Philippines Used Car Price Searcher (v3.4.2 - Log Fix)')
+st.title('🇵🇭 Philippines Used Car Price Searcher (v3.4.3 - Global FB)')
 st.write(t('app_subtitle'))
 
 # Sidebar for inputs
