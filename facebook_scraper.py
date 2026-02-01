@@ -80,33 +80,40 @@ class FacebookScraper:
                     time.sleep(2)
 
                 self._log("開始深度提取商品特徵連結...")
-                # 針對 FB 新版桌面版結構，尋找所有 A 連結
                 all_links = page.query_selector_all('a')
                 self._log(f"發現 {len(all_links)} 個原始連結，執行特徵匹配...")
                 
                 processed_raw = []
+                # 診斷用：記錄前 3 個包含 marketplace 字樣的連結內容
+                debug_count = 0
+                
                 for link in all_links:
                     try:
                         href = link.get_attribute('href') or ""
-                        # FB 桌面版商品連結特徵
                         if "/marketplace/item/" in href:
-                            # 獲取完整文字塊
                             text = link.inner_text() or link.get_attribute('aria-label') or ""
                             
-                            if not text or len(text) < 10: continue
+                            # 診斷：將前幾個找到的連結文字印出，以便確認格式
+                            if debug_count < 3 and text:
+                                clean_text = text.replace('\n', ' | ')
+                                self._log(f"DEBUG - 連結文字 {debug_count+1}: {clean_text[:100]}...")
+                                debug_count += 1
+
+                            if not text or len(text) < 5: continue
                             
+                            # 強化價格匹配：支援更多格式，包含只有數字且帶有逗號的情況
+                            # 有時價格會被拆分，我們先找包含 ₱ 或 PHP 的，如果沒有，找 5 位數以上的純數字 (過濾掉年份)
                             price_match = re.search(r'(?:₱|PHP|\$)\s*([\d,.]+)', text)
+                            
                             if price_match:
                                 p_str = price_match.group(1).replace(",", "")
                                 try:
                                     p_val = int(float(p_str)) if '.' in p_str else int(p_str.replace('.', ''))
                                 except: continue
                                 
-                                # 匯率與基本過濾
                                 if '$' in price_match.group(0) and p_val < 50000: p_val *= 56
                                 if p_val < 15000: continue
                                 
-                                # 標題提取
                                 lines = [l.strip() for l in text.split('\n') if l.strip()]
                                 item_title = next((l for l in lines if not re.search(r'(?:₱|PHP|\$|·)', l)), "Vehicle")
                                 
