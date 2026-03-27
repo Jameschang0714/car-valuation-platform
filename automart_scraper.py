@@ -9,13 +9,30 @@ class AutomartScraper:
         self.base_url = "https://automart.ph"
         self.api_url = "https://api.automart.ph/products"
 
+    def _extract_base_model(self, model):
+        """Extract base model name, stripping variant/spec tokens."""
+        if not model:
+            return ""
+        import re
+        spec_tokens = {'gls', 'glx', 'xle', 'xli', 'xe', 'g', 'e', 'j', 's', 'v',
+                       'at', 'a/t', 'mt', 'm/t', 'cvt', 'automatic', 'manual',
+                       'gas', 'diesel', 'dsl', '4x4', '4x2', 'turbo', 'hybrid',
+                       'hb', 'sedan', 'wagon'}
+        parts = model.split()
+        base_parts = []
+        for p in parts:
+            if p.lower() in spec_tokens or re.match(r'^\d+\.\d+', p):
+                break
+            base_parts.append(p)
+        return " ".join(base_parts) if base_parts else parts[0]
+
     def search(self, make, model, year, fuzzy_search=True):
         results = []
         try:
-            # Construct API Query
-            # Removes "fields" restriction to fetch full object including price_order
+            # Use base model name for API query (too-specific queries return 0)
+            base_model = self._extract_base_model(model) if model else ""
             params = {
-                "q": f"{make} {model} {year}",
+                "q": f"{make} {base_model} {year}".strip(),
                 "limit": 20
             }
             query_url = f"{self.api_url}?{urllib.parse.urlencode(params)}"
