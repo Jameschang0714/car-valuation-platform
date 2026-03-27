@@ -68,49 +68,74 @@ class CarEmpireScraper:
             return []
         soup = BeautifulSoup(html, 'html.parser')
         listings = []
+        seen_links = set()
 
-        # WooCommerce product structure
+        # Strategy 1: Standard WooCommerce product structure
         products = soup.select('li.product, .product-type-simple, .type-product')
         if not products:
-            # Broader fallback
             products = soup.select('.products .product')
 
         for product in products:
-            # Title: WooCommerce uses h2.woocommerce-loop-product__title or similar
             title_elem = (
                 product.select_one('.woocommerce-loop-product__title') or
                 product.select_one('h2') or
-                product.select_one('.product-title') or
-                product.select_one('.card__heading')
+                product.select_one('strong')
             )
-
-            # Price: WooCommerce price structure
             price_elem = (
                 product.select_one('.price ins .woocommerce-Price-amount') or
                 product.select_one('.price .woocommerce-Price-amount') or
                 product.select_one('.price')
             )
-
-            # Link
             link_elem = product.select_one('a[href*="/product/"]') or product.select_one('a')
 
             if title_elem and price_elem:
                 title = title_elem.get_text(strip=True)
                 price_text = price_elem.get_text(strip=True)
                 price = self._parse_price(price_text)
-
                 href = link_elem.get('href', '') if link_elem else ''
                 if href and not href.startswith('http'):
                     href = urllib.parse.urljoin(self.base_url, href)
+                if price > 50000 and href not in seen_links:
+                    seen_links.add(href)
+                    listings.append({
+                        'title': title, 'price': price,
+                        'price_display': f"₱{price:,}",
+                        'link': href, 'source': self.platform_name, 'date': 'N/A'
+                    })
+
+        # Strategy 2: Elementor/simplified layout — <a href="/product/..."> wrapping <strong> + price
+        if not listings:
+            for link in soup.select('a[href*="/product/"]'):
+                href = link.get('href', '')
+                if not href or href in seen_links:
+                    continue
+
+                # Title from <strong> or <img alt="">
+                title = ""
+                strong = link.select_one('strong')
+                if strong:
+                    title = strong.get_text(strip=True)
+                if not title:
+                    img = link.select_one('img[alt]')
+                    if img and img.get('alt'):
+                        title = img['alt'].strip()
+                if not title:
+                    continue
+
+                # Price: find ₱ pattern in link text
+                link_text = link.get_text()
+                price_match = re.search(r'₱\s*([\d,]+(?:\.\d{2})?)', link_text)
+                price = self._parse_price(price_match.group(1)) if price_match else 0
+
+                if not href.startswith('http'):
+                    href = urllib.parse.urljoin(self.base_url, href)
 
                 if price > 50000:
+                    seen_links.add(href)
                     listings.append({
-                        'title': title,
-                        'price': price,
+                        'title': title, 'price': price,
                         'price_display': f"₱{price:,}",
-                        'link': href,
-                        'source': self.platform_name,
-                        'date': 'N/A'
+                        'link': href, 'source': self.platform_name, 'date': 'N/A'
                     })
 
         return listings
@@ -121,8 +146,8 @@ class CarEmpireScraper:
         base_model = self._extract_base_model(model) if model else ""
 
         try:
-            # Primary search: model + year (no brand, no post_type to avoid WooCommerce redirect)
-            query = f"{base_model} {year}".strip() if base_model else f"{make} {year}".strip()
+            # Primary search: year + full model (matches how users search on the site)
+            query = f"{year} {model}".strip() if model else f"{year} {make}".strip()
             encoded_query = urllib.parse.quote_plus(query)
             search_url = f"{self.base_url}/?s={encoded_query}"
 
@@ -132,20 +157,21 @@ class CarEmpireScraper:
             html = self._fetch_page(search_url)
             results = self._parse_html(html)
 
-            # Fallback: add brand to query
+            # Fallback: base_model + year
             if not results and base_model:
-                query2 = f"{make} {base_model} {year}".strip()
+                query2 = f"{year} {base_model}".strip()
                 encoded_q2 = urllib.parse.quote_plus(query2)
                 search_url2 = f"{self.base_url}/?s={encoded_q2}"
-                print(f"[CarEmpire] Fallback with brand: {search_url2}")
+                print(f"[CarEmpire] Fallback base_model+year: {search_url2}")
                 html = self._fetch_page(search_url2)
                 results = self._parse_html(html)
 
-            # Fallback 2: model only (no year)
+            # Fallback 2: brand + model
             if not results and base_model:
-                encoded_q3 = urllib.parse.quote_plus(base_model)
+                query3 = f"{make} {base_model}".strip()
+                encoded_q3 = urllib.parse.quote_plus(query3)
                 search_url3 = f"{self.base_url}/?s={encoded_q3}"
-                print(f"[CarEmpire] Fallback model-only: {search_url3}")
+                print(f"[CarEmpire] Fallback brand+model: {search_url3}")
                 html = self._fetch_page(search_url3)
                 results = self._parse_html(html)
 
