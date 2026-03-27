@@ -12,6 +12,27 @@ class UgarteScraper:
         self.inventory_url = f"{self.base_url}/inventory/"
         self.platform_name = "UgarteCars"
 
+    def _extract_base_model(self, model):
+        """Extract base model name, stripping variant/spec tokens.
+        e.g. 'Mirage G4 1.2 GLX AT' -> 'Mirage G4'
+        """
+        if not model:
+            return model
+        spec_tokens = {
+            'gls', 'glx', 'xle', 'xe', 'xls', 'ltd', 'sport', 'premium',
+            'at', 'a/t', 'mt', 'm/t', 'cvt', 'dct', 'dsg',
+            'gas', 'diesel', 'hybrid', 'ev',
+            '4x2', '4x4', '2wd', '4wd', 'awd', 'fwd',
+            'hb', 'sedan', 'wagon', 'van', 'suv', 'cab',
+        }
+        parts = model.split()
+        base_parts = []
+        for p in parts:
+            if p.lower() in spec_tokens or re.match(r'^\d+\.\d+', p):
+                break
+            base_parts.append(p)
+        return " ".join(base_parts) if base_parts else parts[0]
+
     def _fetch_page(self, url):
         ua = UserAgent(os=['windows', 'mac'], browsers=['chrome', 'edge'])
         headers = {
@@ -44,71 +65,86 @@ class UgarteScraper:
         return int(match.group(1)) if match else 0
 
     def _parse_listings(self, html):
-        """Parse UgarteCars inventory page HTML (Motors Theme / Elementor)."""
+        """Parse UgarteCars inventory page HTML (MVL Motors Theme)."""
         if not html:
             return []
         soup = BeautifulSoup(html, 'html.parser')
         listings = []
         seen_links = set()
 
-        # Strategy 1: Motors Theme listing cards
-        cards = soup.select('.listing-list-loop, .stm-listing-directory-item')
+        # Strategy 1: MVL Motors Theme listing cards
+        cards = soup.select('.listing-list-loop')
         if not cards:
-            # Strategy 2: Generic listing links with price
-            cards = soup.select('.listing-card, .inventory-item, article.listing')
+            cards = soup.select('.stm-listing-directory-item, .stm-isotope-listing-item')
 
         for card in cards:
-            # Title extraction
-            title_elem = (
-                card.select_one('.title a') or
-                card.select_one('.listing-title a') or
-                card.select_one('h3 a') or
-                card.select_one('h2 a') or
-                card.select_one('a.title')
-            )
-
-            # Price extraction - Motors theme uses various price wrappers
-            price_elem = (
-                card.select_one('.single-regular-price .h3') or
-                card.select_one('.sale-price .h3') or
-                card.select_one('.price .h3') or
-                card.select_one('.regular-price') or
-                card.select_one('.sale-price')
-            )
+            # Title: MVL theme uses a.mvl_listing_title with .car-title inside
+            title_elem = card.select_one('a.mvl_listing_title')
+            title = ""
+            href = ""
 
             if title_elem:
-                title = title_elem.get_text(strip=True)
                 href = title_elem.get('href', '')
+                # Get full title from img alt (untruncated) or car-title div
+                img = title_elem.select_one('.mvl_listing_logo img')
+                if img and img.get('alt'):
+                    title = img['alt'].strip()
+                if not title:
+                    car_title = title_elem.select_one('.car-title')
+                    if car_title:
+                        title = car_title.get_text(strip=True)
+                if not title:
+                    title = title_elem.get_text(strip=True)
 
-                if href in seen_links:
-                    continue
-                seen_links.add(href)
+            # Fallback title selectors
+            if not title:
+                for sel in ['.title a', 'h3 a', 'h2 a', '.content a']:
+                    elem = card.select_one(sel)
+                    if elem and elem.get_text(strip=True):
+                        title = elem.get_text(strip=True)
+                        href = elem.get('href', '') or href
+                        break
 
-                if not href.startswith('http'):
-                    href = urllib.parse.urljoin(self.base_url, href)
+            if not title or not href:
+                continue
 
-                price = 0
-                if price_elem:
-                    price = self._parse_price(price_elem.get_text(strip=True))
+            if href in seen_links:
+                continue
+            seen_links.add(href)
 
-                # If no price from the card, try to find any ₱ amount in the card text
-                if price == 0:
-                    card_text = card.get_text()
-                    price_match = re.search(r'₱\s*([\d,]+)', card_text)
-                    if price_match:
-                        price = self._parse_price(price_match.group(1))
+            if not href.startswith('http'):
+                href = urllib.parse.urljoin(self.base_url, href)
 
-                if price > 50000 and title:
-                    listings.append({
-                        'title': title,
-                        'price': price,
-                        'price_display': f"₱{price:,}",
-                        'link': href,
-                        'source': self.platform_name,
-                        'date': 'N/A'
-                    })
+            # Price: MVL theme uses .mvl-normal-price
+            price = 0
+            price_elem = (
+                card.select_one('.mvl-normal-price') or
+                card.select_one('.normal-price') or
+                card.select_one('.mvl-price') or
+                card.select_one('.single-regular-price .h3') or
+                card.select_one('.price')
+            )
+            if price_elem:
+                price = self._parse_price(price_elem.get_text(strip=True))
 
-        # Strategy 3: Fallback - find all links to /listings/ with prices nearby
+            # Fallback: find any ₱ amount in the card text
+            if price == 0:
+                card_text = card.get_text()
+                price_match = re.search(r'₱\s*([\d,]+)', card_text)
+                if price_match:
+                    price = self._parse_price(price_match.group(1))
+
+            if price > 50000 and title:
+                listings.append({
+                    'title': title,
+                    'price': price,
+                    'price_display': f"₱{price:,}",
+                    'link': href,
+                    'source': self.platform_name,
+                    'date': 'N/A'
+                })
+
+        # Strategy 2: Fallback - find all links to /listings/ with prices nearby
         if not listings:
             for link in soup.select('a[href*="/listings/"]'):
                 href = link.get('href', '')
@@ -144,57 +180,75 @@ class UgarteScraper:
     def search(self, make, model, year, fuzzy_search=True):
         results = []
         target_year = int(year) if year and str(year).isdigit() else None
+        base_model = self._extract_base_model(model) if model else ""
 
         try:
             with open("scraper_debug.log", "a", encoding="utf-8") as f:
-                f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] UgarteCars: Starting search for {make} {model} {year}\n")
+                f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] UgarteCars: Starting search for {make} {model} {year} (base_model={base_model})\n")
 
-            # Strategy 1: Crawl inventory pages and filter locally
-            # (Ugarte uses AJAX filtering, so we crawl static pages instead)
             all_listings = []
-            max_pages = 5  # Limit to avoid excessive crawling
 
-            for page_num in range(1, max_pages + 1):
-                if page_num == 1:
-                    url = f"{self.inventory_url}?posts_per_page=20"
-                else:
-                    url = f"{self.inventory_url}page/{page_num}/?posts_per_page=20"
+            # Strategy 1: Use search URL (Motors Theme search)
+            # URL pattern: /inventory/{make_lower}/?stm_keywords={query}
+            make_lower = make.lower().strip() if make else ""
+            search_keywords = f"{year} {base_model}".strip()
+            encoded_kw = urllib.parse.quote_plus(search_keywords)
 
-                print(f"[UgarteCars] Fetching page {page_num}...")
-                html = self._fetch_page(url)
-                if not html:
-                    break
-
-                page_listings = self._parse_listings(html)
-                if not page_listings:
-                    break  # No more results
-
-                all_listings.extend(page_listings)
-                print(f"[UgarteCars] Page {page_num}: {len(page_listings)} listings")
-
-                # Stop early if we found enough
-                if len(all_listings) >= 50:
-                    break
-
-            # Local filtering: brand match (required)
-            if make:
-                results = [r for r in all_listings if make.lower() in r['title'].lower()]
+            if make_lower:
+                search_url = f"{self.inventory_url}{make_lower}/?stm_keywords={encoded_kw}"
             else:
-                results = all_listings
+                search_url = f"{self.inventory_url}?stm_keywords={encoded_kw}"
 
-            # Model match
-            if model and results:
-                model_filtered = [r for r in results if model.lower() in r['title'].lower()]
+            print(f"[UgarteCars] Search URL: {search_url}")
+            with open("scraper_debug.log", "a", encoding="utf-8") as f:
+                f.write(f"[UgarteCars] Search URL: {search_url}\n")
+
+            html = self._fetch_page(search_url)
+            all_listings = self._parse_listings(html)
+            print(f"[UgarteCars] Search returned {len(all_listings)} listings")
+
+            # Fallback: search without year
+            if not all_listings and base_model:
+                encoded_kw2 = urllib.parse.quote_plus(base_model)
+                if make_lower:
+                    search_url2 = f"{self.inventory_url}{make_lower}/?stm_keywords={encoded_kw2}"
+                else:
+                    search_url2 = f"{self.inventory_url}?stm_keywords={encoded_kw2}"
+                print(f"[UgarteCars] Fallback without year: {search_url2}")
+                html = self._fetch_page(search_url2)
+                all_listings = self._parse_listings(html)
+
+            # Fallback 2: brand-only inventory page crawl
+            if not all_listings and make_lower:
+                print(f"[UgarteCars] Fallback: crawling brand inventory pages")
+                for page_num in range(1, 4):
+                    if page_num == 1:
+                        url = f"{self.inventory_url}{make_lower}/"
+                    else:
+                        url = f"{self.inventory_url}{make_lower}/page/{page_num}/"
+                    html = self._fetch_page(url)
+                    if not html:
+                        break
+                    page_listings = self._parse_listings(html)
+                    if not page_listings:
+                        break
+                    all_listings.extend(page_listings)
+
+            results = all_listings
+
+            # Post-filter: base model keyword match
+            if base_model and results:
+                model_filtered = [r for r in results if base_model.lower() in r['title'].lower()]
                 if model_filtered:
                     results = model_filtered
 
-            # Year match
+            # Post-filter: year matching
             if target_year and results:
                 filtered = []
                 for r in results:
                     listing_year = self._extract_year_from_title(r['title'])
                     if listing_year == 0:
-                        continue  # Skip if we can't determine year
+                        filtered.append(r)  # Keep if no year in title
                     elif listing_year == target_year:
                         filtered.append(r)
                     elif fuzzy_search and abs(listing_year - target_year) <= 1:

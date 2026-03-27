@@ -39,6 +39,14 @@ from utils import calculate_market_price, format_currency, calculate_ltv, ai_fil
 # Initialize Session State
 if 'language' not in st.session_state:
     st.session_state.language = 'en'
+if 'search_results' not in st.session_state:
+    st.session_state.search_results = None
+if 'scraper_stats' not in st.session_state:
+    st.session_state.scraper_stats = {}
+if 'suggested_price' not in st.session_state:
+    st.session_state.suggested_price = 0
+if 'removed_listings' not in st.session_state:
+    st.session_state.removed_listings = []
 
 def t(key):
     return TRANSLATIONS[st.session_state.language].get(key, key)
@@ -139,7 +147,6 @@ def parse_date(date_str):
 
 if search_btn:
     st.divider()
-    results_container = st.container()
 
     with st.spinner(t('searching').format(make, model, year)):
         # Progress bar
@@ -179,6 +186,33 @@ if search_btn:
         progress_bar.progress(100)
         status_text.empty()
 
+    # --- AI Smart Filter ---
+    car_query = f"{year} {make} {model}".strip()
+    removed_listings = []
+    filter_msg = None
+
+    if os.getenv("GEMINI_API_KEY") and model and all_results:
+        with st.spinner(t('ai_filter_label')):
+            all_results, removed_listings, filter_msg = ai_filter_listings(car_query, all_results)
+
+    # Sort by price
+    all_results.sort(key=lambda x: x['price'])
+
+    # Store results in session state so they persist across re-runs
+    st.session_state.search_results = all_results
+    st.session_state.scraper_stats = scraper_stats
+    st.session_state.suggested_price = calculate_market_price(all_results) if all_results else 0
+    st.session_state.removed_listings = removed_listings
+
+# --- Display results from session state (persists across re-runs) ---
+if st.session_state.search_results is not None:
+    all_results = st.session_state.search_results
+    scraper_stats = st.session_state.scraper_stats
+    suggested_price = st.session_state.suggested_price
+    removed_listings = st.session_state.removed_listings
+
+    st.divider()
+
     # --- Display per-platform summary ---
     if scraper_stats:
         cols = st.columns(len(scraper_stats))
@@ -187,15 +221,6 @@ if search_btn:
                 st.metric(name, f"{count} results")
 
     if all_results:
-        # --- AI Smart Filter ---
-        car_query = f"{year} {make} {model}".strip()
-        removed_listings = []
-        filter_msg = None
-
-        if os.getenv("GEMINI_API_KEY") and model:
-            with st.spinner(t('ai_filter_label')):
-                all_results, removed_listings, filter_msg = ai_filter_listings(car_query, all_results)
-
         # Show filter results
         if removed_listings:
             st.info(t('ai_filter_removed').format(len(removed_listings)))
@@ -209,13 +234,6 @@ if search_btn:
                         hide_index=True,
                         use_container_width=True
                     )
-        elif filter_msg and "unavailable" in str(filter_msg):
-            pass  # Silently skip if API error
-        elif not os.getenv("GEMINI_API_KEY") and model:
-            st.caption(t('ai_filter_no_key'))
-
-        # Sort by price
-        all_results.sort(key=lambda x: x['price'])
 
         # Convert to DataFrame
         df = pd.DataFrame(all_results)
@@ -258,9 +276,6 @@ if search_btn:
             hide_index=True,
             use_container_width=True
         )
-
-        # Calculate suggested price
-        suggested_price = calculate_market_price(all_results)
 
         # Display market price card
         st.markdown(f"""
@@ -337,10 +352,6 @@ if search_btn:
 
     else:
         st.warning(t('no_results'))
-
-        # Add a manual refresh for logs
-        if st.toggle("Show Raw Search Results (Debug)"):
-             st.json(all_results)
 
 # Debug Console (Always Visible)
 with st.expander(t('developer_tools')):

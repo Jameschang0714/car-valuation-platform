@@ -11,6 +11,27 @@ class CarEmpireScraper:
         self.base_url = "https://carempireph.com"
         self.platform_name = "CarEmpire"
 
+    def _extract_base_model(self, model):
+        """Extract base model name, stripping variant/spec tokens.
+        e.g. 'Mirage G4 1.2 GLX AT' -> 'Mirage G4'
+        """
+        if not model:
+            return model
+        spec_tokens = {
+            'gls', 'glx', 'xle', 'xe', 'xls', 'ltd', 'sport', 'premium',
+            'at', 'a/t', 'mt', 'm/t', 'cvt', 'dct', 'dsg',
+            'gas', 'diesel', 'hybrid', 'ev',
+            '4x2', '4x4', '2wd', '4wd', 'awd', 'fwd',
+            'hb', 'sedan', 'wagon', 'van', 'suv', 'cab',
+        }
+        parts = model.split()
+        base_parts = []
+        for p in parts:
+            if p.lower() in spec_tokens or re.match(r'^\d+\.\d+', p):
+                break
+            base_parts.append(p)
+        return " ".join(base_parts) if base_parts else parts[0]
+
     def _fetch_page(self, url):
         ua = UserAgent(os=['windows', 'mac'], browsers=['chrome', 'edge'])
         headers = {
@@ -97,25 +118,26 @@ class CarEmpireScraper:
     def search(self, make, model, year, fuzzy_search=True):
         results = []
         target_year = int(year) if year and str(year).isdigit() else None
+        base_model = self._extract_base_model(model) if model else ""
 
         try:
-            # Primary search: WooCommerce product search
-            query = f"{make} {model}".strip()
+            # Primary search: use base model + year for better WooCommerce results
+            query = f"{make} {base_model} {year}".strip()
             encoded_query = urllib.parse.quote_plus(query)
             search_url = f"{self.base_url}/?s={encoded_query}&post_type=product"
 
             with open("scraper_debug.log", "a", encoding="utf-8") as f:
-                f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] CarEmpire: Searching {search_url}\n")
+                f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] CarEmpire: Searching {search_url} (base_model={base_model})\n")
 
             html = self._fetch_page(search_url)
             results = self._parse_html(html)
 
-            # Fallback: add year to query if no results
-            if not results and year:
-                query_with_year = f"{year} {make} {model}".strip()
-                encoded_q2 = urllib.parse.quote_plus(query_with_year)
+            # Fallback: base model without year
+            if not results and base_model:
+                query2 = f"{make} {base_model}".strip()
+                encoded_q2 = urllib.parse.quote_plus(query2)
                 search_url2 = f"{self.base_url}/?s={encoded_q2}&post_type=product"
-                print(f"[CarEmpire] Fallback with year: {search_url2}")
+                print(f"[CarEmpire] Fallback without year: {search_url2}")
                 html = self._fetch_page(search_url2)
                 results = self._parse_html(html)
 
@@ -126,9 +148,9 @@ class CarEmpireScraper:
                 print(f"[CarEmpire] Fallback brand-only: {search_url3}")
                 html = self._fetch_page(search_url3)
                 all_brand = self._parse_html(html)
-                # Filter by model keyword if provided
-                if model:
-                    results = [r for r in all_brand if model.lower() in r['title'].lower()]
+                # Filter by base model keyword if provided
+                if base_model:
+                    results = [r for r in all_brand if base_model.lower() in r['title'].lower()]
                 else:
                     results = all_brand
 
@@ -145,9 +167,9 @@ class CarEmpireScraper:
                         filtered.append(r)
                 results = filtered
 
-            # Post-filter: model keyword match
-            if model and results:
-                results = [r for r in results if model.lower() in r['title'].lower()]
+            # Post-filter: base model keyword match (not full spec string)
+            if base_model and results:
+                results = [r for r in results if base_model.lower() in r['title'].lower()]
 
             if results:
                 print(f"[CarEmpire] Found {len(results)} listings")
