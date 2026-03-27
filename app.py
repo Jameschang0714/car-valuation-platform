@@ -271,63 +271,69 @@ if search_btn:
         </div>
         """, unsafe_allow_html=True)
 
-        # --- LTV Analysis Tool ---
-        with st.expander(t('ltv_title')):
-            col_a, col_b = st.columns(2)
-            with col_a:
-                dealer_price = st.number_input(
-                    t('ltv_dealer_price'),
-                    min_value=0,
-                    value=0,
-                    step=10000,
-                    format="%d"
-                )
-            with col_b:
-                financing_amount = st.number_input(
-                    t('ltv_financing'),
-                    min_value=0,
-                    value=0,
-                    step=10000,
-                    format="%d"
-                )
+        # --- LTV Analysis Tool (always visible) ---
+        st.divider()
+        st.subheader(t('ltv_title'))
 
-            if dealer_price > 0 and financing_amount > 0 and suggested_price > 0:
-                ltv = calculate_ltv(dealer_price, financing_amount, suggested_price)
+        col_a, col_b, col_c = st.columns(3)
+        with col_a:
+            dealer_price = st.number_input(
+                t('ltv_dealer_price'),
+                min_value=0,
+                value=0,
+                step=10000,
+                format="%d"
+            )
+        with col_b:
+            financing_amount = st.number_input(
+                t('ltv_financing'),
+                min_value=0,
+                value=0,
+                step=10000,
+                format="%d"
+            )
+        with col_c:
+            st.markdown(f"**{t('ltv_market_median')}**")
+            st.markdown(f"### {format_currency(suggested_price)}")
 
-                if ltv:
-                    st.divider()
+        if dealer_price > 0 and financing_amount > 0 and suggested_price > 0:
+            ltv = calculate_ltv(dealer_price, financing_amount, suggested_price)
 
-                    # Market median
-                    st.markdown(f"**{t('ltv_market_median')}:** {format_currency(suggested_price)}")
+            if ltv:
+                # Display LTV results in metric cards
+                ltv_col1, ltv_col2, ltv_col3 = st.columns(3)
 
-                    # Price gap with color indicator
-                    gap = ltv['price_gap_pct']
-                    if gap > 10:
-                        gap_icon = "🔴"
-                    elif gap > 5:
-                        gap_icon = "🟡"
-                    elif gap > -5:
-                        gap_icon = "🟢"
-                    else:
-                        gap_icon = "🔵"
-                    st.markdown(f"**{t('ltv_price_gap')}:** {gap_icon} {gap:+.1f}%")
+                # Price gap
+                gap = ltv['price_gap_pct']
+                if gap > 10:
+                    gap_icon = "🔴"
+                elif gap > 5:
+                    gap_icon = "🟡"
+                elif gap > -5:
+                    gap_icon = "🟢"
+                else:
+                    gap_icon = "🔵"
 
-                    # Real LTV
-                    ltv_val = ltv['real_ltv']
-                    if ltv_val >= 95:
-                        ltv_icon = "🔴"
-                    elif ltv_val >= 85:
-                        ltv_icon = "🟡"
-                    else:
-                        ltv_icon = "🟢"
-                    st.markdown(f"**{t('ltv_real_ltv')}:** {ltv_icon} {ltv_val:.1f}%")
+                with ltv_col1:
+                    st.metric(t('ltv_price_gap'), f"{gap:+.1f}%", delta=None)
+                    st.caption(gap_icon)
 
-                    # Real DP
-                    st.markdown(f"**{t('ltv_real_dp')}:** {ltv['real_dp']:.1f}%")
+                # Real LTV
+                ltv_val = ltv['real_ltv']
+                if ltv_val >= 95:
+                    ltv_icon = "🔴"
+                elif ltv_val >= 85:
+                    ltv_icon = "🟡"
+                else:
+                    ltv_icon = "🟢"
 
-        # Data visualization
-        st.subheader(t('chart_title'))
-        st.scatter_chart(df, x="title", y="price", color="source")
+                with ltv_col2:
+                    st.metric(t('ltv_real_ltv'), f"{ltv_val:.1f}%", delta=None)
+                    st.caption(ltv_icon)
+
+                # Real DP
+                with ltv_col3:
+                    st.metric(t('ltv_real_dp'), f"{ltv['real_dp']:.1f}%", delta=None)
 
     else:
         st.warning(t('no_results'))

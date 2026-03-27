@@ -9,42 +9,74 @@ class PhilkotseScraper:
     def __init__(self):
         self.base_url = "https://philkotse.com"
 
+    def _extract_base_model(self, model):
+        """Extract the base model name from a full spec string.
+        e.g. 'Xpander GLS 1.5G AT' -> 'Xpander'
+             'Vios XLE CVT' -> 'Vios'
+             'Wing Van' -> 'Wing Van' (multi-word model kept)
+        """
+        if not model:
+            return ""
+        # Known multi-word models that should NOT be split
+        multi_word_models = ['wing van', 'land cruiser', 'hiace commuter', 'civic type r',
+                             'hr v', 'br v', 'cr v', 'rav4', 'rav 4']
+        model_lower = model.lower().strip()
+        for mwm in multi_word_models:
+            if model_lower.startswith(mwm):
+                return model[:len(mwm)]
+
+        # Spec/variant tokens — stop splitting when we hit one
+        spec_tokens = {'gls', 'glx', 'xle', 'xli', 'xe', 'g', 'e', 'j', 's', 'v',
+                       'at', 'a/t', 'mt', 'm/t', 'cvt', 'automatic', 'manual',
+                       'gas', 'diesel', 'dsl', '4x4', '4x2', '2wd', '4wd',
+                       'turbo', 'hybrid', '1.0', '1.2', '1.3', '1.5', '1.5g',
+                       '1.6', '1.8', '2.0', '2.4', '2.5', '2.7', '2.8', '3.0'}
+        parts = model.split()
+        base_parts = []
+        for p in parts:
+            if p.lower() in spec_tokens or re.match(r'^\d+\.\d+', p):
+                break
+            base_parts.append(p)
+        return " ".join(base_parts) if base_parts else parts[0]
+
     def search(self, make, model, year, fuzzy_search=True):
         search_items = []
-        
+
         # Format strings for URLs
         make_slug = make.lower().replace(" ", "-")
-        model_slug = model.lower().replace(" ", "-") if model else ""
-        
+        # Use base model name for URL (not full spec string)
+        base_model = self._extract_base_model(model) if model else ""
+        model_slug = base_model.lower().replace(" ", "-") if base_model else ""
+
         # Handle empty year safely
         target_year = None
         if year and str(year).isdigit():
              target_year = int(year)
-        
-        # Define paths to search
+
+        # Define paths to search — correct Philkotse URL patterns with "used-" prefix
         paths = []
         if model_slug and target_year:
             paths = [
+                f"/used-{make_slug}-{model_slug}-year-{target_year}-for-sale",
                 f"/{make_slug}-{model_slug}-year-{target_year}-for-sale",
-                f"/infinite-scroll/used-{make_slug}-{model_slug}-for-sale?pageIndex=1",
-                f"/cars-for-sale?q={urllib.parse.quote(f'{make} {model} {target_year}')}"
+                f"/cars-for-sale?q={urllib.parse.quote(f'{make} {base_model} {target_year}')}"
             ]
         elif model_slug:
              paths = [
+                f"/used-{make_slug}-{model_slug}-for-sale",
                 f"/{make_slug}-{model_slug}-for-sale",
-                f"/cars-for-sale?q={urllib.parse.quote(f'{make} {model}')}"
+                f"/cars-for-sale?q={urllib.parse.quote(f'{make} {base_model}')}"
             ]
-        
+
         # If fuzzy search is enabled and we need more results, we add adjacent years
         search_years = []
         if target_year:
             search_years = [target_year]
             if fuzzy_search:
                 search_years.extend([target_year - 1, target_year + 1])
-                # Only add specific year paths if model is present
                 if model_slug:
                      for fy in [target_year - 1, target_year + 1]:
-                        paths.append(f"/{make_slug}-{model_slug}-year-{fy}-for-sale")
+                        paths.append(f"/used-{make_slug}-{model_slug}-year-{fy}-for-sale")
 
         # Deduplicate paths while preserving order
         unique_paths = []

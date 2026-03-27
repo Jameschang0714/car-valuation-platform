@@ -14,6 +14,7 @@ class AllCarsScraper:
         self.search_url = f"{self.base_url}/search"
         self.platform_name = "AllCars.ph"
         self.target_year = None
+        self.fuzzy_search = True
 
     async def _fetch_page(self, url):
         ua = UserAgent(os=['windows', 'mac'], browsers=['chrome', 'edge'])
@@ -75,7 +76,8 @@ class AllCarsScraper:
                 if price > 50000:
                     listing_year = self._extract_year_from_title(title)
                     if self.target_year and listing_year:
-                        if abs(self.target_year - listing_year) > 1:
+                        year_tolerance = 1 if self.fuzzy_search else 0
+                        if abs(self.target_year - listing_year) > year_tolerance:
                             continue
 
                     listings.append({
@@ -148,7 +150,8 @@ class AllCarsScraper:
                 if key_model not in title:
                     continue
                 lyr = self._extract_year_from_title(item.get("title", ""))
-                if lyr > 0 and abs(lyr - self.target_year) > 1:
+                year_tolerance = 1 if self.fuzzy_search else 0
+                if lyr > 0 and abs(lyr - self.target_year) > year_tolerance:
                     continue
                 filtered.append(item)
             listings = filtered
@@ -168,6 +171,7 @@ class AllCarsScraper:
         """Sync interface matching other scrapers. Internally runs async."""
         query = f"{year} {make} {model}".strip()
         self.target_year = int(year) if year and str(year).isdigit() else None
+        self.fuzzy_search = fuzzy_search
 
         try:
             loop = asyncio.new_event_loop()
