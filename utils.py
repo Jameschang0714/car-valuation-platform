@@ -1,22 +1,79 @@
 import os
 import json
+import math
+import numpy as np
 import pandas as pd
 
 
 def calculate_market_price(results):
+    """
+    Advanced market price estimation using multi-anchor statistical blending.
+    Targets approximately the 20th percentile of cleaned data with
+    sample-size-dependent weighting and dispersion adjustment.
+    """
     if not results:
         return 0
 
-    prices = [r['price'] for r in results if r['price'] > 0]
-    if not prices:
+    prices = sorted([r['price'] for r in results if r['price'] > 0])
+    n = len(prices)
+    if n == 0:
         return 0
+    if n == 1:
+        return int(round(prices[0] / 5000) * 5000)
+    if n == 2:
+        return int(round(min(prices) / 5000) * 5000)
 
-    # Use median to avoid outliers
-    df = pd.DataFrame(prices, columns=['price'])
-    median_price = df['price'].median()
+    arr = np.array(prices, dtype=float)
 
-    # rounding to nearest thousand
-    return int(round(median_price, -3))
+    # Phase 1: IQR-based outlier removal
+    q1 = np.percentile(arr, 25)
+    q3 = np.percentile(arr, 75)
+    iqr = q3 - q1
+    fence_low = q1 - 1.5 * iqr
+    fence_high = q3 + 1.5 * iqr
+    clean = arr[(arr >= fence_low) & (arr <= fence_high)]
+    if len(clean) < 3:
+        clean = arr  # fallback if too aggressive
+
+    m = len(clean)
+
+    # Phase 2: Multi-anchor percentile blending with sample-size-dependent weights
+    p12 = np.percentile(clean, 12)
+    p20 = np.percentile(clean, 20)
+    p28 = np.percentile(clean, 28)
+    p38 = np.percentile(clean, 38)
+
+    if m >= 15:
+        w = np.array([0.22, 0.38, 0.28, 0.12])
+    elif m >= 8:
+        w = np.array([0.15, 0.33, 0.32, 0.20])
+    else:
+        w = np.array([0.08, 0.28, 0.36, 0.28])
+
+    anchors = np.array([p12, p20, p28, p38])
+    base_price = np.dot(anchors, w)
+
+    # Phase 3: Coefficient of variation adjustment
+    mu = np.mean(clean)
+    cv = np.std(clean) / mu if mu > 0 else 0
+
+    # Tight cluster → more confident → slight downward shift
+    # Wide spread → conservative → minimal shift
+    kappa = 1.0 - min(cv * 0.12, 0.04)
+
+    # Phase 4: Sample confidence scaling
+    # Larger samples allow more aggressive positioning
+    confidence = 1.0 - (0.6 / math.sqrt(max(m, 2)))
+    blend = base_price * kappa * (0.85 + 0.15 * confidence)
+
+    # Phase 5: Harmonic mean cross-check (prevents extreme low bias)
+    hmean = m / np.sum(1.0 / clean)
+    floor_price = hmean * 0.72
+
+    final = max(blend, floor_price)
+
+    # Round to nearest 5000
+    return int(round(final / 5000) * 5000)
 
 def format_currency(amount):
     return f"₱{amount:,.0f}"
@@ -170,7 +227,7 @@ TRANSLATIONS = {
         'ltv_title': '📊 LTV Analysis Tool',
         'ltv_dealer_price': 'Dealer Quoted Price (PHP)',
         'ltv_financing': 'Financing Amount (PHP)',
-        'ltv_market_median': 'Market Median Price',
+        'ltv_market_median': 'Suggested Market Price',
         'ltv_price_gap': 'Price Gap vs Market',
         'ltv_real_ltv': 'Real LTV',
         'ltv_real_dp': 'Real Down Payment',
@@ -211,7 +268,7 @@ TRANSLATIONS = {
         'ltv_title': '📊 LTV 分析工具',
         'ltv_dealer_price': '中間商報價 (PHP)',
         'ltv_financing': '貸款金額 (PHP)',
-        'ltv_market_median': '市場中位價',
+        'ltv_market_median': '建議市場價',
         'ltv_price_gap': '市場溢價',
         'ltv_real_ltv': 'Real LTV',
         'ltv_real_dp': '實際頭期款',

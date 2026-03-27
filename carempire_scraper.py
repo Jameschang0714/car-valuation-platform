@@ -121,10 +121,10 @@ class CarEmpireScraper:
         base_model = self._extract_base_model(model) if model else ""
 
         try:
-            # Primary search: use base model + year for better WooCommerce results
-            query = f"{make} {base_model} {year}".strip()
+            # Primary search: model + year (no brand, no post_type to avoid WooCommerce redirect)
+            query = f"{base_model} {year}".strip() if base_model else f"{make} {year}".strip()
             encoded_query = urllib.parse.quote_plus(query)
-            search_url = f"{self.base_url}/?s={encoded_query}&post_type=product"
+            search_url = f"{self.base_url}/?s={encoded_query}"
 
             with open("scraper_debug.log", "a", encoding="utf-8") as f:
                 f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] CarEmpire: Searching {search_url} (base_model={base_model})\n")
@@ -132,21 +132,29 @@ class CarEmpireScraper:
             html = self._fetch_page(search_url)
             results = self._parse_html(html)
 
-            # Fallback: base model without year
+            # Fallback: add brand to query
             if not results and base_model:
-                query2 = f"{make} {base_model}".strip()
+                query2 = f"{make} {base_model} {year}".strip()
                 encoded_q2 = urllib.parse.quote_plus(query2)
-                search_url2 = f"{self.base_url}/?s={encoded_q2}&post_type=product"
-                print(f"[CarEmpire] Fallback without year: {search_url2}")
+                search_url2 = f"{self.base_url}/?s={encoded_q2}"
+                print(f"[CarEmpire] Fallback with brand: {search_url2}")
                 html = self._fetch_page(search_url2)
                 results = self._parse_html(html)
 
-            # Fallback 2: brand-only search
+            # Fallback 2: model only (no year)
+            if not results and base_model:
+                encoded_q3 = urllib.parse.quote_plus(base_model)
+                search_url3 = f"{self.base_url}/?s={encoded_q3}"
+                print(f"[CarEmpire] Fallback model-only: {search_url3}")
+                html = self._fetch_page(search_url3)
+                results = self._parse_html(html)
+
+            # Fallback 3: brand-only search
             if not results:
                 encoded_make = urllib.parse.quote_plus(make)
-                search_url3 = f"{self.base_url}/?s={encoded_make}&post_type=product"
-                print(f"[CarEmpire] Fallback brand-only: {search_url3}")
-                html = self._fetch_page(search_url3)
+                search_url4 = f"{self.base_url}/?s={encoded_make}"
+                print(f"[CarEmpire] Fallback brand-only: {search_url4}")
+                html = self._fetch_page(search_url4)
                 all_brand = self._parse_html(html)
                 # Filter by base model keyword if provided
                 if base_model:

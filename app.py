@@ -286,32 +286,35 @@ if st.session_state.search_results is not None:
         </div>
         """, unsafe_allow_html=True)
 
-        # --- LTV Analysis Tool (always visible) ---
+        # --- LTV Analysis Tool (always visible, wrapped in form to prevent re-runs) ---
         st.divider()
         st.subheader(t('ltv_title'))
 
-        col_a, col_b, col_c = st.columns(3)
-        with col_a:
-            dealer_price = st.number_input(
-                t('ltv_dealer_price'),
-                min_value=0,
-                value=0,
-                step=10000,
-                format="%d"
-            )
-        with col_b:
-            financing_amount = st.number_input(
-                t('ltv_financing'),
-                min_value=0,
-                value=0,
-                step=10000,
-                format="%d"
-            )
-        with col_c:
-            st.markdown(f"**{t('ltv_market_median')}**")
-            st.markdown(f"### {format_currency(suggested_price)}")
+        with st.form(key="ltv_form"):
+            col_a, col_b, col_c = st.columns(3)
+            with col_a:
+                dealer_price = st.number_input(
+                    t('ltv_dealer_price'),
+                    min_value=0,
+                    value=0,
+                    step=10000,
+                    format="%d"
+                )
+            with col_b:
+                financing_amount = st.number_input(
+                    t('ltv_financing'),
+                    min_value=0,
+                    value=0,
+                    step=10000,
+                    format="%d"
+                )
+            with col_c:
+                st.markdown(f"**{t('ltv_market_median')}**")
+                st.markdown(f"### {format_currency(suggested_price)}")
 
-        if dealer_price > 0 and financing_amount > 0 and suggested_price > 0:
+            ltv_submit = st.form_submit_button("Calculate LTV / 計算 LTV", type="primary")
+
+        if ltv_submit and dealer_price > 0 and financing_amount > 0 and suggested_price > 0:
             ltv = calculate_ltv(dealer_price, financing_amount, suggested_price)
 
             if ltv:
