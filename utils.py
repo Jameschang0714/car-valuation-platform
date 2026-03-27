@@ -8,8 +8,8 @@ import pandas as pd
 def calculate_market_price(results):
     """
     Advanced market price estimation using multi-anchor statistical blending.
-    Targets approximately the 20th percentile of cleaned data with
-    sample-size-dependent weighting and dispersion adjustment.
+    Aggressive positioning — targets approximately the top 20% (P80) of
+    cleaned data with sample-size-dependent weighting and dispersion adjustment.
     """
     if not results:
         return 0
@@ -21,7 +21,7 @@ def calculate_market_price(results):
     if n == 1:
         return int(round(prices[0] / 5000) * 5000)
     if n == 2:
-        return int(round(min(prices) / 5000) * 5000)
+        return int(round(max(prices) / 5000) * 5000)
 
     arr = np.array(prices, dtype=float)
 
@@ -37,40 +37,42 @@ def calculate_market_price(results):
 
     m = len(clean)
 
-    # Phase 2: Multi-anchor percentile blending with sample-size-dependent weights
-    p12 = np.percentile(clean, 12)
-    p20 = np.percentile(clean, 20)
-    p28 = np.percentile(clean, 28)
-    p38 = np.percentile(clean, 38)
+    # Phase 2: Multi-anchor percentile blending (aggressive — upper range)
+    p62 = np.percentile(clean, 62)
+    p72 = np.percentile(clean, 72)
+    p80 = np.percentile(clean, 80)
+    p88 = np.percentile(clean, 88)
 
+    # Larger samples → trust P80 core more; smaller → blend wider
     if m >= 15:
-        w = np.array([0.22, 0.38, 0.28, 0.12])
+        w = np.array([0.12, 0.28, 0.38, 0.22])
     elif m >= 8:
-        w = np.array([0.15, 0.33, 0.32, 0.20])
+        w = np.array([0.18, 0.30, 0.33, 0.19])
     else:
-        w = np.array([0.08, 0.28, 0.36, 0.28])
+        w = np.array([0.25, 0.32, 0.28, 0.15])
 
-    anchors = np.array([p12, p20, p28, p38])
+    anchors = np.array([p62, p72, p80, p88])
     base_price = np.dot(anchors, w)
 
     # Phase 3: Coefficient of variation adjustment
     mu = np.mean(clean)
     cv = np.std(clean) / mu if mu > 0 else 0
 
-    # Tight cluster → more confident → slight downward shift
-    # Wide spread → conservative → minimal shift
-    kappa = 1.0 - min(cv * 0.12, 0.04)
+    # Tight cluster → confident → slight upward push
+    # Wide spread → moderate → less push
+    kappa = 1.0 + min(cv * 0.08, 0.03)
 
     # Phase 4: Sample confidence scaling
-    # Larger samples allow more aggressive positioning
-    confidence = 1.0 - (0.6 / math.sqrt(max(m, 2)))
-    blend = base_price * kappa * (0.85 + 0.15 * confidence)
+    confidence = 1.0 - (0.5 / math.sqrt(max(m, 2)))
+    blend = base_price * kappa * (0.92 + 0.08 * confidence)
 
-    # Phase 5: Harmonic mean cross-check (prevents extreme low bias)
-    hmean = m / np.sum(1.0 / clean)
-    floor_price = hmean * 0.72
+    # Phase 5: Trimmed mean ceiling (prevents exceeding reasonable upper bound)
+    trim_pct = 0.1
+    trim_n = max(1, int(m * trim_pct))
+    trimmed = clean[trim_n:-trim_n] if m > 2 * trim_n else clean
+    ceiling = np.mean(trimmed) * 1.18
 
-    final = max(blend, floor_price)
+    final = min(blend, ceiling)
 
     # Round to nearest 5000
     return int(round(final / 5000) * 5000)
