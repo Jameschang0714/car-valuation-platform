@@ -78,39 +78,30 @@ class PhilkotseScraper:
                      for fy in [target_year - 1, target_year + 1]:
                         paths.append(f"/used-{make_slug}-{model_slug}-year-{fy}-for-sale")
 
-        # Deduplicate paths while preserving order
+        # Build unique_paths: structured URLs first, then generic fallback
         unique_paths = []
-        
-        # KEY FIX: If model is empty or contains spaces (likely a keyword like "Wing Van"),
-        # switch to generic search query instead of strict URL path
-        use_generic_search = False
-        if not model or " " in model:
-             use_generic_search = True
-        
-        if use_generic_search:
-             # Case 1: Brand Only Search (Model is empty)
-             if not model:
-                  # Try specific brand paths first, they are more reliable than ?q=
-                  unique_paths.append(f"/used-{make_slug}-for-sale")
-                  unique_paths.append(f"/{make_slug}-for-sale")
 
-             # Construct generic query: Make + Model (which might be "Wing Van")
-             query_parts = [make]
-             if model: query_parts.append(model)
-             # If exact year provided, add it
-             if year and str(year).isdigit(): query_parts.append(str(year))
-             
-             q_str = urllib.parse.quote(" ".join(query_parts))
-             unique_paths.append(f"/cars-for-sale?q={q_str}")
-             # Backup: Try simpler query if complex one fails (e.g. just "Shacman")
-             if len(query_parts) > 1:
-                 unique_paths.append(f"/cars-for-sale?q={urllib.parse.quote(make)}")
-        else:
-             # Original logic for strict Make-Model path
-             for p in paths:
-                if p not in unique_paths: unique_paths.append(p)
-             # Fallback for strict mode too: Add general search
-             unique_paths.append(f"/cars-for-sale?q={urllib.parse.quote(make)}")
+        if not model:
+            # Brand-only search
+            unique_paths.append(f"/used-{make_slug}-for-sale")
+            unique_paths.append(f"/{make_slug}-for-sale")
+        elif model_slug:
+            # We have a base model slug — always try structured URLs first
+            for p in paths:
+                if p not in unique_paths:
+                    unique_paths.append(p)
+
+        # Generic search fallback (always add as last resort)
+        query_parts = [make]
+        if model:
+            query_parts.append(model)  # Full model string for search query
+        if year and str(year).isdigit():
+            query_parts.append(str(year))
+        q_str = urllib.parse.quote(" ".join(query_parts))
+        unique_paths.append(f"/cars-for-sale?q={q_str}")
+
+        # Final fallback: brand-only search
+        unique_paths.append(f"/cars-for-sale?q={urllib.parse.quote(make)}")
 
         seen_links = set()
         
@@ -169,25 +160,17 @@ class PhilkotseScraper:
                                     date_str = f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
 
                             # --- FILTERING LOGIC ---
-                            # (Same logic as before, ensuring relevance)
                             is_relevant = False
-                            
-                            # 1. Exact make match in title
                             title_lower = title.lower()
+
+                            # 1. Brand match (required)
                             if make.lower() in title_lower:
                                  is_relevant = True
-                            
-                            # 2. Query words match
-                            if not is_relevant and use_generic_search:
-                                 # strict check on valid keywords
-                                 q_keywords = [k.lower() for k in query_parts if len(k) > 2] 
-                                 if q_keywords and all(k in title_lower for k in q_keywords):
-                                      is_relevant = True
 
-                            if is_relevant:
-                                 if model:
-                                      # Relaxed model check
-                                      pass 
+                            # 2. Base model match (if model provided)
+                            if is_relevant and base_model:
+                                 if base_model.lower() not in title_lower:
+                                      is_relevant = False
 
                             if is_relevant:
                                 # Match ANY of the target years IF target_year is set
