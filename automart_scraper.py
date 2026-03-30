@@ -14,7 +14,7 @@ class AutomartScraper:
         if not model:
             return ""
         import re
-        spec_tokens = {'gls', 'glx', 'xle', 'xli', 'xe', 'g', 'e', 'j', 's', 'v',
+        spec_tokens = {'gls', 'glx', 'xle', 'xli', 'xe',
                        'at', 'a/t', 'mt', 'm/t', 'cvt', 'automatic', 'manual',
                        'gas', 'diesel', 'dsl', '4x4', '4x2', 'turbo', 'hybrid',
                        'hb', 'sedan', 'wagon'}
@@ -61,8 +61,8 @@ class AutomartScraper:
                         if title and price and slug:
                             link = f"https://automart.ph/used-cars/{slug}"
                             
-                            # Double check model match (API fuzzy search can be broad)
-                            if model.lower() in title.lower():
+                            # Double check model match using base_model (full spec string won't match)
+                            if base_model.lower() in title.lower():
                                 # API v2: created_at missing, estimate from expired_at
                                 date_str = 'N/A'
                                 if 'expired_at' in item and item['expired_at']:

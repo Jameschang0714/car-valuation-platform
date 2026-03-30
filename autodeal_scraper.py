@@ -166,12 +166,27 @@ class AutoDealScraper:
                                         if price > 30000:
                                             mileage_text = "N/A"
                                             spans = item.find_all('span')
+                                            date_text = 'N/A'
                                             for s_tag in spans:
                                                 t_str = s_tag.get_text(strip=True)
                                                 if 'km' in t_str.lower():
                                                     mileage_text = t_str
-                                                    break
-                                            
+                                                # Look for relative date patterns like "X days ago", "posted 2 weeks ago"
+                                                t_lower = t_str.lower()
+                                                if re.search(r'(\d+)\s+(minute|hour|day|week|month|year)s?\s+ago', t_lower) or t_lower in ('just now', 'today', 'yesterday'):
+                                                    date_text = t_str
+                                            # Also check <p> and <time> tags for dates
+                                            if date_text == 'N/A':
+                                                time_elem = item.select_one('time[datetime]')
+                                                if time_elem:
+                                                    date_text = time_elem.get('datetime', 'N/A')
+                                                else:
+                                                    for p_tag in item.find_all('p'):
+                                                        p_str = p_tag.get_text(strip=True).lower()
+                                                        if re.search(r'(\d+)\s+(minute|hour|day|week|month|year)s?\s+ago', p_str) or p_str in ('just now', 'today', 'yesterday'):
+                                                            date_text = p_tag.get_text(strip=True)
+                                                            break
+
                                             entry = {
                                                 'title': title,
                                                 'price': price,
@@ -179,7 +194,7 @@ class AutoDealScraper:
                                                 'link': link,
                                                 'source': 'AutoDeal',
                                                 'mileage': mileage_text,
-                                                'date': 'N/A'
+                                                'date': date_text
                                             }
 
                                             if entry['link'] not in [x['link'] for x in search_items]:

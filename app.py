@@ -154,10 +154,14 @@ def parse_date(date_str):
             return datetime.now()
         if s_lower == 'yesterday':
             return datetime.now() - timedelta(days=1)
-        m = re.search(r'(\d+)\+?\s+(minute|hour|day|week|month|year)s?\s+ago', s_lower)
+        m = re.search(r'(\d+)(\+)?\s+(minute|hour|day|week|month|year)s?\s+ago', s_lower)
         if m:
             amount = int(m.group(1))
-            unit = m.group(2)
+            has_plus = m.group(2) is not None
+            unit = m.group(3)
+            # "30+ days ago" means at least 30 days — estimate 1.5x for conservative cutoff
+            if has_plus:
+                amount = int(amount * 1.5)
             delta_map = {
                 'minute': timedelta(minutes=amount),
                 'hour': timedelta(hours=amount),
