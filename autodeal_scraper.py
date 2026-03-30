@@ -178,7 +178,8 @@ class AutoDealScraper:
                                                 'price_display': price_text.strip(),
                                                 'link': link,
                                                 'source': 'AutoDeal',
-                                                'mileage': mileage_text
+                                                'mileage': mileage_text,
+                                                'date': 'N/A'
                                             }
 
                                             if entry['link'] not in [x['link'] for x in search_items]:

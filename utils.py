@@ -3,6 +3,7 @@ import json
 import math
 import numpy as np
 import pandas as pd
+from datetime import datetime, timedelta
 
 
 def calculate_market_price(results):
@@ -79,6 +80,52 @@ def calculate_market_price(results):
 
 def format_currency(amount):
     return f"₱{amount:,.0f}"
+
+
+def compute_date_cutoff():
+    """
+    Business rule for date freshness:
+    - Jan-Jun: keep listings from past 6 months
+    - Jul-Dec: keep listings from current year (Jan 1)
+    """
+    now = datetime.now()
+    if now.month <= 6:
+        return now - timedelta(days=183)
+    else:
+        return datetime(now.year, 1, 1)
+
+
+def filter_by_date(listings, cutoff, parse_date_fn):
+    """
+    Filter listings by date cutoff.
+    - Parseable date >= cutoff: keep
+    - Parseable date < cutoff: remove (stale)
+    - N/A or unparseable date: keep (benefit of the doubt)
+    Returns (kept, removed, stats_dict).
+    """
+    kept = []
+    removed = []
+    kept_no_date = 0
+
+    for r in listings:
+        d = parse_date_fn(r.get('date'))
+        if d is None:
+            kept.append(r)
+            kept_no_date += 1
+        elif d >= cutoff:
+            kept.append(r)
+        else:
+            r['_date_filter_reason'] = f"Posted {d.strftime('%Y-%m-%d')}, cutoff {cutoff.strftime('%Y-%m-%d')}"
+            removed.append(r)
+
+    stats = {
+        'total': len(listings),
+        'kept': len(kept),
+        'removed_stale': len(removed),
+        'kept_no_date': kept_no_date,
+        'cutoff': cutoff.strftime('%Y-%m-%d'),
+    }
+    return kept, removed, stats
 
 
 def calculate_ltv(dealer_price, financing_amount, market_median):
@@ -237,6 +284,9 @@ TRANSLATIONS = {
         'ai_filter_removed': 'AI filtered {} mismatched variant listings',
         'ai_filter_show_removed': 'Show removed listings',
         'ai_filter_no_key': 'Set GEMINI_API_KEY in .env to enable AI variant filtering',
+        'date_filter_removed': 'Date filter: removed {} stale listings (cutoff: {})',
+        'date_filter_no_date': '{} listings kept without date info',
+        'date_filter_show_removed': 'Show date-filtered listings',
     },
     'zh': {
         'app_title': '🇵🇭 菲律賓二手車行情搜尋器',
@@ -278,5 +328,8 @@ TRANSLATIONS = {
         'ai_filter_removed': 'AI 已過濾 {} 筆不符合車型的結果',
         'ai_filter_show_removed': '查看被剔除的清單',
         'ai_filter_no_key': '請在 .env 設定 GEMINI_API_KEY 以啟用 AI 車型過濾',
+        'date_filter_removed': '日期過濾：移除 {} 筆過期資訊（截止日：{}）',
+        'date_filter_no_date': '{} 筆無日期資訊已保留',
+        'date_filter_show_removed': '查看被移除的過期清單',
     }
 }

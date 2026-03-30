@@ -34,7 +34,7 @@ from automart_scraper import AutomartScraper
 from allcars_scraper import AllCarsScraper
 from carempire_scraper import CarEmpireScraper
 from ugarte_scraper import UgarteScraper
-from utils import calculate_market_price, format_currency, calculate_ltv, ai_filter_listings, TRANSLATIONS
+from utils import calculate_market_price, format_currency, calculate_ltv, ai_filter_listings, compute_date_cutoff, filter_by_date, TRANSLATIONS
 
 # Initialize Session State
 if 'language' not in st.session_state:
@@ -47,6 +47,10 @@ if 'suggested_price' not in st.session_state:
     st.session_state.suggested_price = 0
 if 'removed_listings' not in st.session_state:
     st.session_state.removed_listings = []
+if 'date_removed' not in st.session_state:
+    st.session_state.date_removed = []
+if 'date_stats' not in st.session_state:
+    st.session_state.date_stats = {}
 
 def t(key):
     return TRANSLATIONS[st.session_state.language].get(key, key)
@@ -135,12 +139,34 @@ def _run_one_scraper(scraper, make, model, year, fuzzy_search):
 def parse_date(date_str):
     try:
         if not date_str or date_str == 'N/A': return None
-        if re.match(r'\d{4}-\d{2}-\d{2}', str(date_str)):
-            return datetime.strptime(str(date_str)[:10], "%Y-%m-%d")
-        if str(date_str).isdigit():
-             ts = int(date_str)
-             if ts > 1000000000000: ts /= 1000.0
-             return datetime.fromtimestamp(ts)
+        s = str(date_str).strip()
+        # 1. ISO date: YYYY-MM-DD
+        if re.match(r'\d{4}-\d{2}-\d{2}', s):
+            return datetime.strptime(s[:10], "%Y-%m-%d")
+        # 2. Unix timestamp
+        if s.isdigit():
+            ts = int(s)
+            if ts > 1000000000000: ts /= 1000.0
+            return datetime.fromtimestamp(ts)
+        # 3. Relative dates (Carousell): "8 days ago", "yesterday", "just now", "30+ days ago"
+        s_lower = s.lower()
+        if 'just now' in s_lower or s_lower == 'today':
+            return datetime.now()
+        if s_lower == 'yesterday':
+            return datetime.now() - timedelta(days=1)
+        m = re.search(r'(\d+)\+?\s+(minute|hour|day|week|month|year)s?\s+ago', s_lower)
+        if m:
+            amount = int(m.group(1))
+            unit = m.group(2)
+            delta_map = {
+                'minute': timedelta(minutes=amount),
+                'hour': timedelta(hours=amount),
+                'day': timedelta(days=amount),
+                'week': timedelta(weeks=amount),
+                'month': timedelta(days=amount * 30),
+                'year': timedelta(days=amount * 365),
+            }
+            return datetime.now() - delta_map.get(unit, timedelta(days=amount))
     except: pass
     return None
 
@@ -186,6 +212,10 @@ if search_btn:
         progress_bar.progress(100)
         status_text.empty()
 
+    # --- Date Freshness Filter (before AI to reduce token cost) ---
+    cutoff = compute_date_cutoff()
+    all_results, date_removed, date_stats = filter_by_date(all_results, cutoff, parse_date)
+
     # --- AI Smart Filter ---
     car_query = f"{year} {make} {model}".strip()
     removed_listings = []
@@ -203,6 +233,8 @@ if search_btn:
     st.session_state.scraper_stats = scraper_stats
     st.session_state.suggested_price = calculate_market_price(all_results) if all_results else 0
     st.session_state.removed_listings = removed_listings
+    st.session_state.date_removed = date_removed
+    st.session_state.date_stats = date_stats
 
 # --- Display results from session state (persists across re-runs) ---
 if st.session_state.search_results is not None:
@@ -210,6 +242,8 @@ if st.session_state.search_results is not None:
     scraper_stats = st.session_state.scraper_stats
     suggested_price = st.session_state.suggested_price
     removed_listings = st.session_state.removed_listings
+    date_removed = st.session_state.date_removed
+    date_stats = st.session_state.date_stats
 
     st.divider()
 
@@ -219,6 +253,23 @@ if st.session_state.search_results is not None:
         for i, (name, count) in enumerate(scraper_stats.items()):
             with cols[i]:
                 st.metric(name, f"{count} results")
+
+    # --- Date filter summary ---
+    if date_stats and date_stats.get('removed_stale', 0) > 0:
+        date_msg = t('date_filter_removed').format(date_stats['removed_stale'], date_stats['cutoff'])
+        if date_stats.get('kept_no_date', 0) > 0:
+            date_msg += f" | {t('date_filter_no_date').format(date_stats['kept_no_date'])}"
+        st.warning(date_msg)
+        with st.expander(t('date_filter_show_removed')):
+            date_df = pd.DataFrame(date_removed)
+            if '_date_filter_reason' in date_df.columns:
+                st.dataframe(
+                    date_df[['source', 'title', 'price', 'date', '_date_filter_reason']].rename(
+                        columns={'_date_filter_reason': 'Reason'}
+                    ),
+                    hide_index=True,
+                    use_container_width=True
+                )
 
     if all_results:
         # Show filter results
