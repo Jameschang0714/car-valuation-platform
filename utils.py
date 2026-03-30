@@ -192,7 +192,7 @@ Respond with ONLY valid JSON (no markdown, no explanation):
     try:
         import urllib.request
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key={api_key}"
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent"
         payload = json.dumps({
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
@@ -205,15 +205,21 @@ Respond with ONLY valid JSON (no markdown, no explanation):
         req = urllib.request.Request(
             url,
             data=payload.encode('utf-8'),
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": api_key,
+            },
             method="POST"
         )
 
         with urllib.request.urlopen(req, timeout=15) as resp:
             result = json.loads(resp.read().decode('utf-8'))
 
-        # Parse Gemini response
-        text = result['candidates'][0]['content']['parts'][0]['text']
+        # Parse Gemini response (with null checks)
+        candidates = result.get('candidates', [])
+        if not candidates:
+            return listings, [], "AI filter: no candidates in response"
+        text = candidates[0].get('content', {}).get('parts', [{}])[0].get('text', '')
         parsed = json.loads(text)
 
         keep_indices = set(parsed.get('keep', []))

@@ -103,7 +103,14 @@ with st.sidebar:
     make = st.text_input(t('make'), value="Toyota")
     # Allow empty model/year for broader search
     model = st.text_input(t('model'), value="", placeholder="Optional (e.g. Vios, Wing Van)")
-    year = st.text_input(t('year'), value="", placeholder="Optional (e.g. 2023)")
+    year_input = st.text_input(t('year'), value="", placeholder="Optional (e.g. 2023)")
+    # Validate year: must be empty or 4-digit number in reasonable range
+    year = ""
+    if year_input.strip():
+        if year_input.strip().isdigit() and 1980 <= int(year_input.strip()) <= datetime.now().year + 1:
+            year = year_input.strip()
+        else:
+            st.warning("⚠️ Year must be between 1980 and " + str(datetime.now().year + 1))
 
     # Lock Year Toggle (Checkbox logic: lock_year=True means fuzzy_search=False)
     lock_year = st.checkbox(t('lock_year'), value=False, help=t('lock_year_help'))
@@ -206,7 +213,13 @@ if search_btn:
                 }
                 completed = 0
                 for future in as_completed(futures):
-                    source_name, results = future.result()
+                    try:
+                        source_name, results = future.result(timeout=45)
+                    except Exception as e:
+                        scraper_obj = futures[future]
+                        source_name = type(scraper_obj).__name__.replace('Scraper', '')
+                        results = []
+                        print(f"{source_name} timed out or crashed: {e}")
                     all_results.extend(results)
                     scraper_stats[source_name] = len(results)
                     completed += 1

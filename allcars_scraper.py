@@ -215,9 +215,12 @@ class AllCarsScraper:
 
         try:
             loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            results = loop.run_until_complete(self._async_search(query))
-            loop.close()
+            try:
+                results = loop.run_until_complete(
+                    asyncio.wait_for(self._async_search(query), timeout=30)
+                )
+            finally:
+                loop.close()
         except Exception as e:
             with open("scraper_debug.log", "a", encoding="utf-8") as f:
                 f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] AllCars Error: {e}\n")
