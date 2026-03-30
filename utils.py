@@ -19,10 +19,16 @@ def calculate_market_price(results):
     n = len(prices)
     if n == 0:
         return 0
+
+    max_price = max(prices)
+
     if n == 1:
         return int(round(prices[0] / 5000) * 5000)
     if n == 2:
-        return int(round(max(prices) / 5000) * 5000)
+        # Weighted toward the higher price (aggressive) but never exceed it
+        weighted = prices[0] * 0.3 + prices[1] * 0.7
+        rounded = int(round(weighted / 5000) * 5000)
+        return min(rounded, max_price)
 
     arr = np.array(prices, dtype=float)
 
@@ -74,6 +80,9 @@ def calculate_market_price(results):
     ceiling = np.mean(trimmed) * 1.18
 
     final = min(blend, ceiling)
+
+    # Global cap: never exceed the highest actual price in the dataset
+    final = min(final, max_price)
 
     # Round to nearest 5000
     return int(round(final / 5000) * 5000)
