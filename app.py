@@ -264,9 +264,10 @@ if st.session_state.search_results is not None:
             date_df = pd.DataFrame(date_removed)
             if '_date_filter_reason' in date_df.columns:
                 st.dataframe(
-                    date_df[['source', 'title', 'price', 'date', '_date_filter_reason']].rename(
-                        columns={'_date_filter_reason': 'Reason'}
+                    date_df[['source', 'title', 'price', 'date', 'link', '_date_filter_reason']].rename(
+                        columns={'_date_filter_reason': 'Reason', 'link': 'Link'}
                     ),
+                    column_config={"Link": st.column_config.LinkColumn("Link")},
                     hide_index=True,
                     use_container_width=True
                 )
@@ -279,9 +280,10 @@ if st.session_state.search_results is not None:
                 removed_df = pd.DataFrame(removed_listings)
                 if '_remove_reason' in removed_df.columns:
                     st.dataframe(
-                        removed_df[['source', 'title', 'price', '_remove_reason']].rename(
-                            columns={'_remove_reason': 'Reason'}
+                        removed_df[['source', 'title', 'price', 'link', '_remove_reason']].rename(
+                            columns={'_remove_reason': 'Reason', 'link': 'Link'}
                         ),
+                        column_config={"Link": st.column_config.LinkColumn("Link")},
                         hide_index=True,
                         use_container_width=True
                     )
