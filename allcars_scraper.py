@@ -1,7 +1,9 @@
 import asyncio
+import json
 import re
 import urllib.parse
 import time
+from concurrent.futures import ThreadPoolExecutor
 from bs4 import BeautifulSoup
 from curl_cffi.requests import AsyncSession
 from curl_cffi import requests as cffi_requests
@@ -167,6 +169,44 @@ class AllCarsScraper:
         await asyncio.sleep(1)
         return listings
 
+    def _fetch_shopify_date(self, product_url):
+        """Fetch published_at from Shopify product .json endpoint."""
+        try:
+            json_url = product_url.rstrip('/') + '.json'
+            ua = UserAgent(os=['windows', 'mac'], browsers=['chrome', 'edge'])
+            headers = {"User-Agent": ua.random, "Accept": "application/json"}
+            resp = cffi_requests.get(json_url, headers=headers, impersonate="chrome120", timeout=8)
+            if resp.status_code == 200:
+                data = resp.json()
+                pub = data.get('product', {}).get('published_at', '')
+                if pub:
+                    return pub[:10]  # YYYY-MM-DD
+        except Exception:
+            pass
+        return None
+
+    def _enrich_dates(self, results, max_pages=10):
+        """Batch-fetch Shopify product JSON in parallel to extract dates."""
+        no_date = [(i, r) for i, r in enumerate(results) if r.get('date') == 'N/A' and r.get('link')]
+        if not no_date:
+            return results
+
+        to_fetch = no_date[:max_pages]
+        print(f"[AllCars] Enriching dates for {len(to_fetch)}/{len(no_date)} listings")
+
+        with ThreadPoolExecutor(max_workers=min(5, len(to_fetch))) as executor:
+            futures = {executor.submit(self._fetch_shopify_date, r['link']): i for i, r in to_fetch}
+            for future in futures:
+                idx = futures[future]
+                try:
+                    date_str = future.result(timeout=10)
+                    if date_str:
+                        results[idx]['date'] = date_str
+                except Exception:
+                    pass
+
+        return results
+
     def search(self, make, model, year, fuzzy_search=True):
         """Sync interface matching other scrapers. Internally runs async."""
         query = f"{year} {make} {model}".strip()
@@ -183,5 +223,9 @@ class AllCarsScraper:
                 f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] AllCars Error: {e}\n")
             print(f"[AllCars] Error: {e}")
             results = []
+
+        # Enrich dates from Shopify product JSON (parallel)
+        if results:
+            results = self._enrich_dates(results)
 
         return results

@@ -1,6 +1,7 @@
 import re
 import time
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from bs4 import BeautifulSoup
 from curl_cffi import requests as cffi_requests
 from fake_useragent import UserAgent
@@ -177,6 +178,41 @@ class UgarteScraper:
 
         return listings
 
+    def _extract_date_from_page(self, url):
+        """Fetch a listing page and extract datePublished from JSON-LD."""
+        try:
+            html = self._fetch_page(url)
+            if not html:
+                return None
+            m = re.search(r'"datePublished"\s*:\s*"([^"]+)"', html)
+            if m:
+                return m.group(1)[:10]  # YYYY-MM-DD
+        except Exception:
+            pass
+        return None
+
+    def _enrich_dates(self, results, max_pages=10):
+        """Batch-fetch listing pages in parallel to extract dates."""
+        no_date = [(i, r) for i, r in enumerate(results) if r.get('date') == 'N/A' and r.get('link')]
+        if not no_date:
+            return results
+
+        to_fetch = no_date[:max_pages]
+        print(f"[UgarteCars] Enriching dates for {len(to_fetch)}/{len(no_date)} listings")
+
+        with ThreadPoolExecutor(max_workers=min(5, len(to_fetch))) as executor:
+            futures = {executor.submit(self._extract_date_from_page, r['link']): i for i, r in to_fetch}
+            for future in futures:
+                idx = futures[future]
+                try:
+                    date_str = future.result(timeout=8)
+                    if date_str:
+                        results[idx]['date'] = date_str
+                except Exception:
+                    pass
+
+        return results
+
     def search(self, make, model, year, fuzzy_search=True):
         results = []
         target_year = int(year) if year and str(year).isdigit() else None
@@ -256,7 +292,9 @@ class UgarteScraper:
                 if filtered:
                     results = filtered
 
+            # Enrich dates from individual listing pages (parallel)
             if results:
+                results = self._enrich_dates(results)
                 print(f"[UgarteCars] Found {len(results)} matching listings")
             else:
                 print(f"[UgarteCars] No matching results after filtering")
