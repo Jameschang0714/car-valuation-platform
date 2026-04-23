@@ -41,6 +41,7 @@ from utils import calculate_market_price, format_currency, calculate_ltv, ai_fil
 ALLOWED_NETWORKS = [
     ipaddress.ip_network('10.154.1.0/24'),
     ipaddress.ip_network('10.154.12.0/24'),
+    ipaddress.ip_network('210.5.112.210/32'),  # Company gateway public IP
 ]
 ACCESS_PASSWORD = os.getenv('ACCESS_PASSWORD', 'admin123')
 
@@ -55,6 +56,19 @@ def get_client_ip():
         return headers.get('X-Real-Ip', '')
     except Exception:
         return ''
+
+def get_ip_debug_info():
+    """Return debug info about detected IP headers (for troubleshooting)."""
+    try:
+        headers = st.context.headers
+        return {
+            'X-Forwarded-For': headers.get('X-Forwarded-For', '(not set)'),
+            'X-Real-Ip': headers.get('X-Real-Ip', '(not set)'),
+            'X-Envoy-External-Address': headers.get('X-Envoy-External-Address', '(not set)'),
+            'Forwarded': headers.get('Forwarded', '(not set)'),
+        }
+    except Exception as e:
+        return {'error': str(e)}
 
 def is_ip_allowed(ip_str):
     """Check if IP is in allowed company networks."""
@@ -113,7 +127,11 @@ if not ip_ok and not st.session_state.authenticated:
         else:
             st.error("❌ Invalid password. Please try again.")
     st.markdown('</div>', unsafe_allow_html=True)
-    st.caption(f"Your IP: `{client_ip}`")
+    st.caption(f"Detected IP: `{client_ip}`")
+    with st.expander("🔧 IP Debug Info"):
+        debug = get_ip_debug_info()
+        for k, v in debug.items():
+            st.text(f"{k}: {v}")
     st.stop()
 
 # Styling
