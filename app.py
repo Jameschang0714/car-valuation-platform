@@ -4,6 +4,7 @@ import pandas as pd
 import importlib
 import time
 import re
+import ipaddress
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
@@ -36,7 +37,36 @@ from carempire_scraper import CarEmpireScraper
 from ugarte_scraper import UgarteScraper
 from utils import calculate_market_price, format_currency, calculate_ltv, ai_filter_listings, compute_date_cutoff, filter_by_date, TRANSLATIONS
 
+# --- Access Control ---
+ALLOWED_NETWORKS = [
+    ipaddress.ip_network('10.154.1.0/24'),
+    ipaddress.ip_network('10.154.12.0/24'),
+]
+ACCESS_PASSWORD = os.getenv('ACCESS_PASSWORD', 'admin123')
+
+def get_client_ip():
+    """Get client IP from Cloud Run X-Forwarded-For header."""
+    try:
+        headers = st.context.headers
+        xff = headers.get('X-Forwarded-For', '')
+        if xff:
+            # X-Forwarded-For: client, proxy1, proxy2 — first entry is original client
+            return xff.split(',')[0].strip()
+        return headers.get('X-Real-Ip', '')
+    except Exception:
+        return ''
+
+def is_ip_allowed(ip_str):
+    """Check if IP is in allowed company networks."""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        return any(ip in net for net in ALLOWED_NETWORKS)
+    except (ValueError, TypeError):
+        return False
+
 # Initialize Session State
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
 if 'language' not in st.session_state:
     st.session_state.language = 'en'
 if 'search_results' not in st.session_state:
@@ -59,6 +89,32 @@ def t(key):
 
 # Page config
 st.set_page_config(page_title=t('app_title'), page_icon="🚗", layout="wide")
+
+# --- Access Gate: IP whitelist + password fallback ---
+client_ip = get_client_ip()
+ip_ok = is_ip_allowed(client_ip)
+
+if not ip_ok and not st.session_state.authenticated:
+    st.markdown("""
+    <style>
+        .login-box { max-width: 420px; margin: 80px auto; padding: 40px;
+                     background: white; border-radius: 12px;
+                     box-shadow: 0 4px 20px rgba(0,0,0,0.1); text-align: center; }
+    </style>
+    """, unsafe_allow_html=True)
+    st.markdown('<div class="login-box">', unsafe_allow_html=True)
+    st.markdown("## 🔒 Access Restricted")
+    st.markdown("This system is for authorized personnel only.")
+    pwd = st.text_input("Password", type="password", placeholder="Enter access password")
+    if st.button("Login", type="primary", use_container_width=True):
+        if pwd == ACCESS_PASSWORD:
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("❌ Invalid password. Please try again.")
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.caption(f"Your IP: `{client_ip}`")
+    st.stop()
 
 # Styling
 st.markdown("""
