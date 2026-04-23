@@ -51,6 +51,8 @@ if 'date_removed' not in st.session_state:
     st.session_state.date_removed = []
 if 'date_stats' not in st.session_state:
     st.session_state.date_stats = {}
+if 'variant_removed' not in st.session_state:
+    st.session_state.variant_removed = []
 
 def t(key):
     return TRANSLATIONS[st.session_state.language].get(key, key)
@@ -233,6 +235,22 @@ if search_btn:
     cutoff = compute_date_cutoff()
     all_results, date_removed, date_stats = filter_by_date(all_results, cutoff, parse_date)
 
+    # --- Variant Keyword Filter (strict trim-level matching) ---
+    variant_removed = []
+    if model and model.strip():
+        model_keywords = [k.lower() for k in model.strip().split() if len(k) > 1]
+        if model_keywords:
+            variant_matched = []
+            for r in all_results:
+                title_lower = r.get('title', '').lower()
+                if all(kw in title_lower for kw in model_keywords):
+                    variant_matched.append(r)
+                else:
+                    missing = [kw for kw in model_keywords if kw not in title_lower]
+                    r['_remove_reason'] = f"Variant mismatch (missing: {', '.join(missing)})"
+                    variant_removed.append(r)
+            all_results = variant_matched
+
     # --- AI Smart Filter ---
     car_query = f"{year} {make} {model}".strip()
     removed_listings = []
@@ -252,6 +270,7 @@ if search_btn:
     st.session_state.removed_listings = removed_listings
     st.session_state.date_removed = date_removed
     st.session_state.date_stats = date_stats
+    st.session_state.variant_removed = variant_removed
 
 # --- Display results from session state (persists across re-runs) ---
 if st.session_state.search_results is not None:
@@ -261,6 +280,7 @@ if st.session_state.search_results is not None:
     removed_listings = st.session_state.removed_listings
     date_removed = st.session_state.date_removed
     date_stats = st.session_state.date_stats
+    variant_removed = st.session_state.variant_removed
 
     st.divider()
 
@@ -283,6 +303,21 @@ if st.session_state.search_results is not None:
                 st.dataframe(
                     date_df[['source', 'title', 'price', 'date', 'link', '_date_filter_reason']].rename(
                         columns={'_date_filter_reason': 'Reason', 'link': 'Link'}
+                    ),
+                    column_config={"Link": st.column_config.LinkColumn("Link")},
+                    hide_index=True,
+                    use_container_width=True
+                )
+
+    # --- Variant keyword filter summary ---
+    if variant_removed:
+        st.warning(t('variant_filter_removed').format(len(variant_removed)))
+        with st.expander(t('variant_filter_show_removed')):
+            var_df = pd.DataFrame(variant_removed)
+            if '_remove_reason' in var_df.columns:
+                st.dataframe(
+                    var_df[['source', 'title', 'price', 'link', '_remove_reason']].rename(
+                        columns={'_remove_reason': 'Reason', 'link': 'Link'}
                     ),
                     column_config={"Link": st.column_config.LinkColumn("Link")},
                     hide_index=True,

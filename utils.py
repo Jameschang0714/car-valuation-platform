@@ -176,12 +176,14 @@ def ai_filter_listings(car_query, listings):
 
     prompt = f"""You are an automotive pricing expert. The target vehicle is: "{car_query}"
 
-Below are {len(items)} search results from Philippine used car platforms. Determine which listings match the target vehicle (same or very similar variant).
+Below are {len(items)} search results from Philippine used car platforms. Determine which listings match the target vehicle.
 
 Rules:
-- KEEP: Same brand, same model name, similar year (±1), same or unspecified trim/transmission
-- REMOVE: Clearly different trim (XE vs XLE), different transmission (MT vs AT/CVT), different model (Vios vs Altis)
-- If title information is insufficient to determine, DEFAULT TO KEEP
+- KEEP: Same brand, same model, same trim/variant, similar year (±1)
+- REMOVE: Different trim level (GLX ≠ GLS ≠ G ≠ GLE, XE ≠ XLE ≠ XLi), different transmission type (MT vs AT/CVT), different model name (Vios vs Altis)
+- Trim levels are STRICT: GLX and GLS are DIFFERENT trims, XE and XLE are DIFFERENT trims. Only keep exact trim match.
+- If target specifies a trim but listing title does NOT mention any trim, DEFAULT TO KEEP
+- If listing title specifies a DIFFERENT trim from the target, REMOVE it
 
 Listings:
 {json.dumps(items, ensure_ascii=False)}
@@ -302,6 +304,8 @@ TRANSLATIONS = {
         'date_filter_removed': 'Date filter: removed {} stale listings (cutoff: {})',
         'date_filter_no_date': '{} listings kept without date info',
         'date_filter_show_removed': 'Show date-filtered listings',
+        'variant_filter_removed': 'Variant filter: removed {} listings with mismatched trim/spec',
+        'variant_filter_show_removed': 'Show variant-filtered listings',
     },
     'zh': {
         'app_title': '🇵🇭 菲律賓二手車行情搜尋器',
@@ -346,5 +350,7 @@ TRANSLATIONS = {
         'date_filter_removed': '日期過濾：移除 {} 筆過期資訊（截止日：{}）',
         'date_filter_no_date': '{} 筆無日期資訊已保留',
         'date_filter_show_removed': '查看被移除的過期清單',
+        'variant_filter_removed': '規格過濾：移除 {} 筆不符合車型規格的結果',
+        'variant_filter_show_removed': '查看被規格過濾的清單',
     }
 }
