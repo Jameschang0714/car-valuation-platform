@@ -358,7 +358,7 @@ if search_btn:
         with st.spinner(t('ai_filter_label')):
             all_results, removed_listings, filter_msg = ai_filter_listings(car_query, all_results)
 
-    # --- Within-platform Deduplication (same source + title + date) ---
+    # --- Within-platform Deduplication (same source + title + price + date) ---
     dedup_removed = []
     if all_results:
         seen = set()
@@ -366,10 +366,11 @@ if search_btn:
         for r in all_results:
             source = r.get('source', '')
             title = r.get('title', '').strip()
+            price = r.get('price', 0)
             date = r.get('date', 'N/A')
-            sig = (source, title, date)
+            sig = (source, title, price, date)
             if sig in seen:
-                r['_remove_reason'] = f"Same listing on {source} (identical title & date)"
+                r['_remove_reason'] = f"Same listing on {source} (identical title, price & date)"
                 dedup_removed.append(r)
                 continue
             seen.add(sig)
