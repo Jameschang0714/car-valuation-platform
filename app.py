@@ -358,36 +358,21 @@ if search_btn:
         with st.spinner(t('ai_filter_label')):
             all_results, removed_listings, filter_msg = ai_filter_listings(car_query, all_results)
 
-    # --- Cross-platform Deduplication ---
+    # --- Within-platform Deduplication (same source + title + date) ---
     dedup_removed = []
     if all_results:
-        seen_links = set()
-        seen_sigs = {}
+        seen = set()
         unique = []
-        # Noise words to ignore when building title signature
-        noise = {'for', 'sale', 'at', 'in', 'the', 'a', 'and', 'auto', 'automatic',
-                 'manual', 'php', 'first', 'owner', 'hot', 'all', 'dp', 'new',
-                 'used', 'second', 'hand', 'buy', 'price', 'sold', 'available',
-                 'well', 'kept', 'maintained', 'fresh', 'casa', 'cvt', 'mt'}
         for r in all_results:
-            # 1. Exact link dedup
-            link = r.get('link', '')
-            if link and link in seen_links:
-                r['_remove_reason'] = f"Duplicate link"
+            source = r.get('source', '')
+            title = r.get('title', '').strip()
+            date = r.get('date', 'N/A')
+            sig = (source, title, date)
+            if sig in seen:
+                r['_remove_reason'] = f"Same listing on {source} (identical title & date)"
                 dedup_removed.append(r)
                 continue
-            if link:
-                seen_links.add(link)
-            # 2. Price + normalized title keywords dedup (cross-platform)
-            price = r.get('price', 0)
-            title = r.get('title', '').lower()
-            tokens = set(re.findall(r'[a-z0-9/]+', title)) - noise
-            sig = (price, frozenset(tokens))
-            if sig in seen_sigs:
-                r['_remove_reason'] = f"Duplicate of {seen_sigs[sig]} listing (same price & title)"
-                dedup_removed.append(r)
-                continue
-            seen_sigs[sig] = r.get('source', 'Unknown')
+            seen.add(sig)
             unique.append(r)
         all_results = unique
 
