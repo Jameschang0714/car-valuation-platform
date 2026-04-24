@@ -99,6 +99,8 @@ if 'variant_removed' not in st.session_state:
     st.session_state.variant_removed = []
 if 'year_removed' not in st.session_state:
     st.session_state.year_removed = []
+if 'dedup_removed' not in st.session_state:
+    st.session_state.dedup_removed = []
 
 def t(key):
     return TRANSLATIONS[st.session_state.language].get(key, key)
@@ -356,6 +358,39 @@ if search_btn:
         with st.spinner(t('ai_filter_label')):
             all_results, removed_listings, filter_msg = ai_filter_listings(car_query, all_results)
 
+    # --- Cross-platform Deduplication ---
+    dedup_removed = []
+    if all_results:
+        seen_links = set()
+        seen_sigs = {}
+        unique = []
+        # Noise words to ignore when building title signature
+        noise = {'for', 'sale', 'at', 'in', 'the', 'a', 'and', 'auto', 'automatic',
+                 'manual', 'php', 'first', 'owner', 'hot', 'all', 'dp', 'new',
+                 'used', 'second', 'hand', 'buy', 'price', 'sold', 'available',
+                 'well', 'kept', 'maintained', 'fresh', 'casa', 'cvt', 'mt'}
+        for r in all_results:
+            # 1. Exact link dedup
+            link = r.get('link', '')
+            if link and link in seen_links:
+                r['_remove_reason'] = f"Duplicate link"
+                dedup_removed.append(r)
+                continue
+            if link:
+                seen_links.add(link)
+            # 2. Price + normalized title keywords dedup (cross-platform)
+            price = r.get('price', 0)
+            title = r.get('title', '').lower()
+            tokens = set(re.findall(r'[a-z0-9/]+', title)) - noise
+            sig = (price, frozenset(tokens))
+            if sig in seen_sigs:
+                r['_remove_reason'] = f"Duplicate of {seen_sigs[sig]} listing (same price & title)"
+                dedup_removed.append(r)
+                continue
+            seen_sigs[sig] = r.get('source', 'Unknown')
+            unique.append(r)
+        all_results = unique
+
     # Sort by price
     all_results.sort(key=lambda x: x['price'])
 
@@ -368,6 +403,7 @@ if search_btn:
     st.session_state.date_stats = date_stats
     st.session_state.variant_removed = variant_removed
     st.session_state.year_removed = year_removed
+    st.session_state.dedup_removed = dedup_removed
 
 # --- Display results from session state (persists across re-runs) ---
 if st.session_state.search_results is not None:
@@ -379,6 +415,7 @@ if st.session_state.search_results is not None:
     date_stats = st.session_state.date_stats
     variant_removed = st.session_state.variant_removed
     year_removed = st.session_state.year_removed
+    dedup_removed = st.session_state.dedup_removed
 
     st.divider()
 
@@ -430,6 +467,21 @@ if st.session_state.search_results is not None:
             if '_remove_reason' in var_df.columns:
                 st.dataframe(
                     var_df[['source', 'title', 'price', 'link', '_remove_reason']].rename(
+                        columns={'_remove_reason': 'Reason', 'link': 'Link'}
+                    ),
+                    column_config={"Link": st.column_config.LinkColumn("Link")},
+                    hide_index=True,
+                    use_container_width=True
+                )
+
+    # --- Dedup summary ---
+    if dedup_removed:
+        st.info(t('dedup_removed').format(len(dedup_removed)))
+        with st.expander(t('dedup_show_removed')):
+            dedup_df = pd.DataFrame(dedup_removed)
+            if '_remove_reason' in dedup_df.columns:
+                st.dataframe(
+                    dedup_df[['source', 'title', 'price', 'link', '_remove_reason']].rename(
                         columns={'_remove_reason': 'Reason', 'link': 'Link'}
                     ),
                     column_config={"Link": st.column_config.LinkColumn("Link")},
