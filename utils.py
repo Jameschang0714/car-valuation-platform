@@ -306,6 +306,8 @@ TRANSLATIONS = {
         'date_filter_show_removed': 'Show date-filtered listings',
         'variant_filter_removed': 'Variant filter: removed {} listings with mismatched trim/spec',
         'variant_filter_show_removed': 'Show variant-filtered listings',
+        'year_filter_removed': 'Year filter: removed {} listings with mismatched year',
+        'year_filter_show_removed': 'Show year-filtered listings',
     },
     'zh': {
         'app_title': '🇵🇭 菲律賓二手車行情搜尋器',
@@ -352,5 +354,7 @@ TRANSLATIONS = {
         'date_filter_show_removed': '查看被移除的過期清單',
         'variant_filter_removed': '規格過濾：移除 {} 筆不符合車型規格的結果',
         'variant_filter_show_removed': '查看被規格過濾的清單',
+        'year_filter_removed': '年份過濾：移除 {} 筆不符合年份的結果',
+        'year_filter_show_removed': '查看被年份過濾的清單',
     }
 }
